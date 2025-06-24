@@ -1,6 +1,10 @@
 # darwin files
 .DS_Store
 
+# excel 
+temp_data.xlsx
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
