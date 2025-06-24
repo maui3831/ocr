@@ -290,7 +290,10 @@ def main():
                         
                         predicted_char = classes[prediction[0]]
                         
-                        st.success(f"🎯 Predicted Character: **{predicted_char}**")
+                        st.success(f"""
+                                   🎯 Predicted Character: **{predicted_char}**
+                                   🖥 ASCII Value : **{ord(predicted_char)}** 
+                                   """)
                         
                         # Show confidence scores if possible
                         z1 = input_array @ st.session_state.model.W1 + st.session_state.model.b1

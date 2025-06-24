@@ -130,6 +130,7 @@ class PerceptronOCR:
         z2 = a1 @ self.W2 + self.b2
         a2 = self.softmax(z2)
         return np.argmax(a2, axis=1)
+    
 
     def sample_predict(self):
         preds = self.predict(self.X)
