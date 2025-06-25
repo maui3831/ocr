@@ -197,40 +197,76 @@ def main():
     # Sidebar for model parameters
     st.sidebar.title("Training Parameters")
     
-    # File upload
-    uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=['xlsx', 'xls'])
+    # Data source selection
+    st.sidebar.subheader("Data Source")
+    data_source = st.sidebar.radio(
+        "Choose data source:",
+        options=["Upload File", "Use Default Dataset"],
+        help="Upload your own Excel file or use the default characters.xlsx dataset"
+    )
     
-    if uploaded_file is not None:
-        # Create temp directory if it doesn't exist
-        import os
-        import tempfile
+    file_path = None
+    
+    if data_source == "Upload File":
+        # File upload
+        uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=['xlsx', 'xls'])
         
-        # Use system temp directory or create a local temp folder
-        try:
-            temp_dir = os.path.join(tempfile.gettempdir(), "ocr_temp")
-            os.makedirs(temp_dir, exist_ok=True)
-        except:
-            # Fallback to local directory
-            temp_dir = "temp"
-            os.makedirs(temp_dir, exist_ok=True)
-        
-        # Save uploaded file temporarily
-        temp_file_path = os.path.join(temp_dir, "temp_data.xlsx")
-        with open(temp_file_path, "wb") as f:
-            f.write(uploaded_file.read())
-        
-        # Initialize model if not already done
-        if st.session_state.model is None:
+        if uploaded_file is not None:
+            # Create temp directory if it doesn't exist
+            import os
+            import tempfile
+            
+            # Use system temp directory or create a local temp folder
             try:
-                st.session_state.model = ocr(temp_file_path)
-                st.sidebar.success("✅ Model initialized successfully!")
-                st.sidebar.write(f"Features shape: {st.session_state.model.X.shape}")
-                st.sidebar.write(f"Labels shape: {st.session_state.model.Y.shape}")
-            except Exception as e:
-                st.sidebar.error(f"❌ Error initializing model: {str(e)}")
-                return
-    else:
-        st.info("Please upload an Excel file to begin.")
+                temp_dir = os.path.join(tempfile.gettempdir(), "ocr_temp")
+                os.makedirs(temp_dir, exist_ok=True)
+            except:
+                # Fallback to local directory
+                temp_dir = "temp"
+                os.makedirs(temp_dir, exist_ok=True)
+            
+            # Save uploaded file temporarily
+            file_path = os.path.join(temp_dir, "temp_data.xlsx")
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.read())
+            
+            st.sidebar.success("✅ File uploaded successfully!")
+        
+    else:  # Use Default Dataset
+        # Check if default dataset exists
+        import os
+        default_path = "./data/characters.xlsx"
+        
+        if os.path.exists(default_path):
+            file_path = default_path
+            st.sidebar.success("✅ Default dataset found!")
+            st.sidebar.info("Using: ./data/characters.xlsx")
+        else:
+            st.sidebar.error("❌ Default dataset not found!")
+            st.sidebar.error("Please ensure ./data/characters.xlsx exists or upload a file.")
+    
+    # Initialize model if file path is available
+    if file_path is not None and st.session_state.model is None:
+        try:
+            st.session_state.model = ocr(file_path)
+            st.sidebar.success("✅ Model initialized successfully!")
+            st.sidebar.write(f"📊 Features shape: {st.session_state.model.X.shape}")
+            st.sidebar.write(f"🏷️ Labels shape: {st.session_state.model.Y.shape}")
+            
+            # Show dataset info
+            _, classes = st.session_state.model._label_encode(st.session_state.model._preprocess_excel()[1])
+            st.sidebar.write(f"📝 Number of classes: {len(classes)}")
+            st.sidebar.write(f"🔤 Classes: {', '.join(sorted(classes))}")
+            
+        except Exception as e:
+            st.sidebar.error(f"❌ Error initializing model: {str(e)}")
+            st.sidebar.error("Please check your Excel file format.")
+            return
+    elif file_path is None:
+        if data_source == "Upload File":
+            st.info("📁 Please upload an Excel file to begin.")
+        else:
+            st.error("📁 Default dataset not found. Please upload a file or ensure ./data/characters.xlsx exists.")
         return
     
     # Training parameters
