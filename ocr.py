@@ -17,6 +17,9 @@ class PerceptronOCR:
         self.W2 = None
         self.b2 = None
 
+        # training history
+        self.train_history = []
+
 
     # internal functions
     def _preprocess_excel(self):
@@ -120,7 +123,11 @@ class PerceptronOCR:
             self.W2 -= learning_rate * dW2
             self.b2 -= learning_rate * db2
 
-            
+            self.train_history += [{ 
+                'epoch': epoch,
+                'loss': loss,
+                'accuracy': self.accuracy(a2, self.Y)
+            }]
             print(f"Epoch {epoch}, Loss: {loss:.4f} , Accuracy: {self.accuracy(a2, self.Y):.4f}")
 
     def predict(self, X):
@@ -141,5 +148,12 @@ class PerceptronOCR:
 
         for i, (pred_idx, true_idx) in enumerate(zip(preds, y_true)):
             print(f"Sample {i+1}: predicted {classes[pred_idx]}, actual {classes[true_idx]}")
-
-
+        
+    def history(self):
+        if not self.train_history:
+            print("No training history available.")
+            return
+        
+        history_df = pd.DataFrame(self.train_history)
+        print(history_df)
+        return history_df

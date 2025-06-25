@@ -76,37 +76,17 @@ def train_model(model, **kwargs):
     # Capture training output
     with redirect_stdout(output_buffer):
         try:
-            # Store original print function
-            original_epochs = kwargs.get('epochs', 1000)
-            
-            # Override the train method to update progress
-            class TrainingCallback:
-                def __init__(self):
-                    self.epoch = 0
-                    self.loss_history = []
-                    self.acc_history = []
-                
-                def update(self, epoch, loss, accuracy):
-                    self.epoch = epoch
-                    self.loss_history.append(loss)
-                    self.acc_history.append(accuracy)
-                    
-                    # Update progress
-                    progress = (epoch + 1) / original_epochs
-                    progress_bar.progress(progress)
-                    status_text.text(f"Epoch {epoch + 1}/{original_epochs} - Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
-            
-            callback = TrainingCallback()
-            
             # Train the model
             model.train(**kwargs)
             
-            # Store training history
-            st.session_state.training_history = {
-                'epochs': list(range(original_epochs)),
-                'loss': callback.loss_history if callback.loss_history else [0],
-                'accuracy': callback.acc_history if callback.acc_history else [0]
-            }
+            # Get training history from the model after training
+            if hasattr(model, 'train_history') and model.train_history:
+                history_df = pd.DataFrame(model.train_history)
+                st.session_state.training_history = {
+                    'epochs': history_df['epoch'].tolist(),
+                    'loss': history_df['loss'].tolist(),
+                    'accuracy': history_df['accuracy'].tolist()
+                }
             
         except Exception as e:
             st.error(f"Training failed: {str(e)}")
@@ -124,7 +104,7 @@ def train_model(model, **kwargs):
     return True
 
 def display_training_plots():
-    """Display training loss and accuracy plots"""
+    """Display training loss and accuracy plots using model history"""
     if not st.session_state.training_history['loss']:
         return
     
@@ -139,9 +119,10 @@ def display_training_plots():
         go.Scatter(
             x=st.session_state.training_history['epochs'],
             y=st.session_state.training_history['loss'],
-            mode='lines',
+            mode='lines+markers',
             name='Loss',
-            line=dict(color='red')
+            line=dict(color='red', width=2),
+            marker=dict(size=4)
         ),
         row=1, col=1
     )
@@ -151,17 +132,19 @@ def display_training_plots():
         go.Scatter(
             x=st.session_state.training_history['epochs'],
             y=st.session_state.training_history['accuracy'],
-            mode='lines',
+            mode='lines+markers',
             name='Accuracy',
-            line=dict(color='blue')
+            line=dict(color='blue', width=2),
+            marker=dict(size=4)
         ),
         row=1, col=2
     )
     
     fig.update_layout(
-        title="Training Metrics",
+        title="Training Metrics Over Time",
         showlegend=False,
-        height=400
+        height=400,
+        template="plotly_white"
     )
     
     fig.update_xaxes(title_text="Epoch", row=1, col=1)
@@ -170,6 +153,42 @@ def display_training_plots():
     fig.update_yaxes(title_text="Accuracy", row=1, col=2)
     
     st.plotly_chart(fig, use_container_width=True)
+
+def display_training_history_table():
+    """Display training history as a dataframe table"""
+    if st.session_state.model and hasattr(st.session_state.model, 'train_history') and st.session_state.model.train_history:
+        st.subheader("Training History Details")
+        
+        # Get history dataframe from model
+        history_df = pd.DataFrame(st.session_state.model.train_history)
+        
+        # Display basic statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Epochs", len(history_df))
+        with col2:
+            st.metric("Final Loss", f"{history_df['loss'].iloc[-1]:.4f}")
+        with col3:
+            st.metric("Final Accuracy", f"{history_df['accuracy'].iloc[-1]:.4f}")
+        with col4:
+            st.metric("Best Accuracy", f"{history_df['accuracy'].max():.4f}")
+        
+        # Show the dataframe
+        with st.expander("View Full Training History"):
+            st.dataframe(
+                history_df.round(4),
+                use_container_width=True,
+                height=300
+            )
+        
+        # Download button for history
+        csv = history_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Training History as CSV",
+            data=csv,
+            file_name="training_history.csv",
+            mime="text/csv"
+        )
 
 def main():
     st.title("🧠 OCR Neural Network Trainer")
@@ -308,11 +327,14 @@ def main():
                     except Exception as e:
                         st.error(f"❌ Prediction failed: {str(e)}")
     
-    # Display training plots
+    # Display training plots and history
     if st.session_state.is_trained and st.session_state.training_history['loss']:
         st.markdown("---")
         st.subheader("Training Progress")
         display_training_plots()
+        
+        # Display detailed training history
+        display_training_history_table()
 
 if __name__ == "__main__":
     main()
