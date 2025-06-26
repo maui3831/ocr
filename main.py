@@ -264,6 +264,24 @@ def main():
                 "Please ensure ./more_digits_data.csv exists or upload a file."
             )
 
+    # Track previous data source and file path
+    if "prev_data_source" not in st.session_state:
+        st.session_state.prev_data_source = data_source
+    if "prev_file_path" not in st.session_state:
+        st.session_state.prev_file_path = None
+
+    # Detect data source or file path change and reset model if needed
+    if st.session_state.prev_data_source != data_source or (
+        file_path is not None and st.session_state.prev_file_path != str(file_path)
+    ):
+        st.session_state.model = None
+        st.session_state.is_trained = False
+        st.session_state.training_history = {"loss": [], "accuracy": [], "epochs": []}
+        st.session_state.prev_data_source = data_source
+        st.session_state.prev_file_path = (
+            str(file_path) if file_path is not None else None
+        )
+
     # Initialize model if file path is available
     if file_path is not None and st.session_state.model is None:
         try:
@@ -349,8 +367,23 @@ def main():
                         st.session_state.model.sample_predict()
 
                     sample_output = output_buffer.getvalue()
+                    st.session_state.sample_output = sample_output
                     if sample_output:
                         st.text(sample_output)
+
+                    # Store training output in session state
+                    training_output = st.session_state.get("training_output", None)
+                    if training_output is None:
+                        training_output = ""
+                    st.session_state.training_output = training_output
+
+        # Always display sample predictions and training output if available
+        if st.session_state.get("sample_output"):
+            st.subheader("Sample Predictions")
+            st.text(st.session_state["sample_output"])
+        if st.session_state.get("training_output"):
+            with st.expander("Training Output"):
+                st.text(st.session_state["training_output"])
 
         # Display training metrics if available
         if st.session_state.is_trained and st.session_state.training_history["loss"]:
