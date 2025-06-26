@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
 
-class PerceptronOCR:
-    def __init__(self, input_excel_file=None):
-        self.input_excel_file = input_excel_file
-        self.df = pd.read_excel(input_excel_file, header=None)
 
-        self.X = self.preprocess()[0]  # Features
-        self.Y = self.preprocess()[1]  # Labels
+class PerceptronOCR:
+    def __init__(self, input_file=None):
+        self.input_file = input_file
+        self.df = pd.read_csv(input_file)
+
+        self.X, self.Y = self._preprocess_csv()
         print(f"Features shape: {self.X.shape}")
         print(f"Labels shape: {self.Y.shape}")
 
@@ -20,140 +20,175 @@ class PerceptronOCR:
         # training history
         self.train_history = []
 
-
     # internal functions
-    def _preprocess_excel(self):
-        characters = []
+    def _preprocess_csv(self):
+        """Process CSV data and extract 12-element feature vectors"""
+        features = []
         labels = []
 
-        for i in range(2, len(self.df), 10):
-            block = self.df.iloc[i:i+7, 1:6]   
-            label_cell = self.df.iloc[i, 9]    
+        for _, row in self.df.iterrows():
+            # Extract the 35 pixel values
+            pixel_values = row.iloc[:-1].values.astype(
+                np.float32
+            )  # All columns except 'label'
+            label = row["label"]
 
-            if pd.isna(label_cell):
-                print(f"⚠️ Missing label at row {i}")
-                continue
-            block = block.fillna(0)      
-            flat = block.values.flatten().astype(np.float32)
+            # Reshape to 7x5 grid (7 rows, 5 columns)
+            grid = pixel_values.reshape(7, 5)
 
-            if flat.shape[0] != 35:
-                print(f"⚠️ Skipping malformed block at row {i}")
-                continue
-            characters.append(flat)
-            labels.append(label_cell)
-    
-        return np.array(characters), np.array(labels)
-    
-    def _label_encode(self, y_raw):
-        classes = sorted(set(y_raw))
-        label_to_idx = {label: i for i, label in enumerate(classes)}
-        y = np.array([label_to_idx[c] for c in y_raw])
-        return y, classes
+            # Compute row sums (7 values) and column sums (5 values)
+            row_sums = np.sum(grid, axis=1)  # Sum each row (7 values)
+            col_sums = np.sum(grid, axis=0)  # Sum each column (5 values)
 
-    def _one_hot(self, y, num_classes):
-        result = np.zeros((len(y), num_classes))
-        result[np.arange(len(y)), y] = 1
-        return result
-    
+            # Combine into 12-element feature vector
+            feature_vector = np.concatenate([row_sums, col_sums])
+
+            features.append(feature_vector)
+            labels.append(label)
+
+        return np.array(features), np.array(labels).astype(np.float32).reshape(-1, 1)
+
     def preprocess(self):
-        X, y_raw = self._preprocess_excel()
-        y, classes = self._label_encode(y_raw)
-        y_one_hot = self._one_hot(y, len(classes)   )
-        return X, y_one_hot
+        # Only CSV supported
+        return self._preprocess_csv()
 
     # activation functions
     def sigmoid(self, x):
-        return 1 / (1 + np.exp(-x))
+        return 1 / (1 + np.exp(-np.clip(x, -500, 500)))  # Clip to prevent overflow
 
     def sigmoid_deriv(self, x):
         s = self.sigmoid(x)
         return s * (1 - s)
 
-    def softmax(self, z):
-        exp_z = np.exp(z - np.max(z, axis=1, keepdims=True))
-        return exp_z / np.sum(exp_z, axis=1, keepdims=True)
-    
-    def cross_entropy(self, pred, true):
-        return -np.sum(true * np.log(pred + 1e-9)) / len(true)
-    
+    def relu(self, x):
+        return np.maximum(0, x)
+
+    def relu_deriv(self, x):
+        return (x > 0).astype(float)
+
+    def mse(self, pred, true):
+        return np.mean((pred - true) ** 2)
+
     def accuracy(self, pred, true):
-        return np.mean(np.argmax(pred, axis=1) == np.argmax(true, axis=1))
-    
+        # For regression, check if rounded prediction matches true ASCII value
+        pred_ascii = np.round(pred).astype(int)
+        true_ascii = true.astype(int)
+        return np.mean(pred_ascii == true_ascii)
+
     # training function
     def train(
-            self,
-            input_size=35,
-            learning_rate=0.01,
+        self,
+        input_size=None,
+        learning_rate=0.01,
+        hidden_size=26,
+        epochs=1000,
+    ):
+        if input_size is None:
+            input_size = self.X.shape[1]  # Auto-detect input size
 
-            # 0.67 * (input_size + output_size)
-            hidden_size=26,
-            epochs=1000,
-        ):
-        output_size = self.Y.shape[1]
-        # Initialize weights and biases
-        self.W1 = np.random.randn(input_size, hidden_size) * 0.01
+        output_size = 1  # Single output for regression
+
+        # Xavier/Glorot initialization
+        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2.0 / input_size)
         self.b1 = np.zeros((1, hidden_size))
-
-        self.W2 = np.random.randn(hidden_size, output_size) * 0.01
+        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2.0 / hidden_size)
         self.b2 = np.zeros((1, output_size))
 
+        # Feature normalization for CSV data
+        self.feature_mean = np.mean(self.X, axis=0)
+        self.feature_std = np.std(self.X, axis=0) + 1e-8
+        X_normalized = (self.X - self.feature_mean) / self.feature_std
+
+        # Normalize targets to help with training stability
+        self.target_mean = np.mean(self.Y)
+        self.target_std = np.std(self.Y) + 1e-8
+        Y_normalized = (self.Y - self.target_mean) / self.target_std
+
         for epoch in range(epochs):
-            # Forward
-            z1 = self.X @ self.W1 + self.b1
-            a1 = self.sigmoid(z1)
-
+            # Forward pass
+            z1 = X_normalized @ self.W1 + self.b1
+            a1 = self.relu(z1)  # Use ReLU for CSV data
             z2 = a1 @ self.W2 + self.b2
-            a2 = self.softmax(z2)
+            a2 = z2  # Linear output for regression
+            loss = self.mse(a2, Y_normalized)
 
-            # Loss
-            loss = self.cross_entropy(a2, self.Y)
+            # Backward pass
+            dz2 = (a2 - Y_normalized) / len(X_normalized)  # MSE derivative
+            dW2 = a1.T @ dz2
+            db2 = np.sum(dz2, axis=0, keepdims=True)
 
-            # Backward
-            dz2 = a2 - self.Y                       
-            dW2 = a1.T @ dz2 / len(self.X)
-            db2 = np.sum(dz2, axis=0, keepdims=True) / len(self.X)
+            dz1 = (dz2 @ self.W2.T) * self.relu_deriv(z1)
+            dW1 = X_normalized.T @ dz1
+            db1 = np.sum(dz1, axis=0, keepdims=True)
 
-            dz1 = (dz2 @ self.W2.T) * self.sigmoid_deriv(z1)
-            dW1 = self.X.T @ dz1 / len(self.X)
-            db1 = np.sum(dz1, axis=0, keepdims=True) / len(self.X)
+            # Gradient clipping to prevent explosion
+            grad_norm = np.sqrt(
+                np.sum(dW1**2) + np.sum(db1**2) + np.sum(dW2**2) + np.sum(db2**2)
+            )
+            if grad_norm > 1.0:
+                dW1 = dW1 / grad_norm
+                db1 = db1 / grad_norm
+                dW2 = dW2 / grad_norm
+                db2 = db2 / grad_norm
 
-            # Update
+            # Update weights
             self.W1 -= learning_rate * dW1
             self.b1 -= learning_rate * db1
             self.W2 -= learning_rate * dW2
             self.b2 -= learning_rate * db2
 
-            self.train_history += [{ 
-                'epoch': epoch,
-                'loss': loss,
-                'accuracy': self.accuracy(a2, self.Y)
-            }]
-            print(f"Epoch {epoch}, Loss: {loss:.4f} , Accuracy: {self.accuracy(a2, self.Y):.4f}")
+            # Denormalize predictions for accuracy calculation
+            a2_denorm = a2 * self.target_std + self.target_mean
+            accuracy = self.accuracy(a2_denorm, self.Y)
+
+            # Store training history
+            self.train_history.append(
+                {"epoch": epoch, "loss": loss, "accuracy": accuracy}
+            )
+
+            if epoch % 100 == 0:  # Print every 100 epochs
+                print(f"Epoch {epoch}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
+
+        print(f"Final - Epoch {epochs - 1}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
 
     def predict(self, X):
-        z1 = X @ self.W1 + self.b1
-        a1 = self.sigmoid(z1)
+        # Normalize input
+        if hasattr(self, "feature_mean"):
+            X_normalized = (X - self.feature_mean) / self.feature_std
+        else:
+            X_normalized = X
 
+        z1 = X_normalized @ self.W1 + self.b1
+        a1 = self.relu(z1)
         z2 = a1 @ self.W2 + self.b2
-        a2 = self.softmax(z2)
-        return np.argmax(a2, axis=1)
-    
+
+        # Denormalize the output for regression
+        output_normalized = z2
+        if hasattr(self, "target_mean"):
+            output = output_normalized * self.target_std + self.target_mean
+        else:
+            output = output_normalized
+        return output
 
     def sample_predict(self):
+        # For CSV regression
         preds = self.predict(self.X)
-        y_true = np.argmax(self.Y, axis=1)
+        y_true = self.Y.flatten()
 
-        # Rebuild the classes from the original labels
-        _, classes = self._label_encode(self._preprocess_excel()[1])  # just to get class names
+        print("Sample predictions for digit recognition:")
+        for i, (pred, true) in enumerate(zip(preds.flatten(), y_true)):
+            pred_rounded = int(np.round(pred))
+            pred_char = chr(pred_rounded) if 32 <= pred_rounded <= 126 else "?"
+            true_char = chr(int(true))
+            print(
+                f"Sample {i + 1}: predicted ASCII {pred_rounded} ('{pred_char}'), actual ASCII {int(true)} ('{true_char}')"
+            )
 
-        for i, (pred_idx, true_idx) in enumerate(zip(preds, y_true)):
-            print(f"Sample {i+1}: predicted {classes[pred_idx]}, actual {classes[true_idx]}")
-        
     def history(self):
         if not self.train_history:
             print("No training history available.")
             return
-        
+
         history_df = pd.DataFrame(self.train_history)
         print(history_df)
         return history_df
