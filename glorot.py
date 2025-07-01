@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-class PerceptronOCR:
+class GlorotOCR:
     def __init__(self, input_file=None):
         self.input_file = input_file
         self.df = pd.read_csv(input_file)
@@ -88,10 +88,13 @@ class PerceptronOCR:
 
         output_size = 1  # Single output for regression
 
-        # Basic random initialization (e.g., from a standard normal distribution)
-        self.W1 = np.random.randn(input_size, hidden_size) * 0.01 # Small random values
+        # Xavier/Glorot initialization
+        limit1 = np.sqrt(6 / (input_size + hidden_size))
+        self.W1 = np.random.uniform(-limit1, limit1, (input_size, hidden_size))
         self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size) * 0.01 # Small random values
+
+        limit2 = np.sqrt(6 / (hidden_size + output_size))
+        self.W2 = np.random.uniform(-limit2, limit2, (hidden_size, output_size))
         self.b2 = np.zeros((1, output_size))
 
         # Feature normalization for CSV data
@@ -107,7 +110,7 @@ class PerceptronOCR:
         for epoch in range(epochs):
             # Forward pass
             z1 = X_normalized @ self.W1 + self.b1
-            a1 = self.relu(z1)  # Using ReLU for consistency
+            a1 = self.relu(z1)  # Use ReLU for CSV data
             z2 = a1 @ self.W2 + self.b2
             a2 = z2  # Linear output for regression
             loss = self.mse(a2, Y_normalized)

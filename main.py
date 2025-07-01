@@ -6,7 +6,12 @@ from plotly.subplots import make_subplots
 import io
 from pathlib import Path
 from contextlib import redirect_stdout
-from ocr import PerceptronOCR as ocr
+
+# Import all three OCR models
+from glorot import GlorotOCR
+from kaiming import KaimingOCR
+from ocr import PerceptronOCR
+
 
 # Page configuration
 st.set_page_config(
@@ -14,12 +19,12 @@ st.set_page_config(
 )
 
 # Initialize session state
-if "model" not in st.session_state:
-    st.session_state.model = None
+if "models" not in st.session_state:
+    st.session_state.models = {}  # Store all initialized models
+if "training_results" not in st.session_state:
+    st.session_state.training_results = {}  # Store results for each model
 if "is_trained" not in st.session_state:
     st.session_state.is_trained = False
-if "training_history" not in st.session_state:
-    st.session_state.training_history = {"loss": [], "accuracy": [], "epochs": []}
 if "drawing_grid" not in st.session_state:
     st.session_state.drawing_grid = np.zeros((7, 5))
 
@@ -67,135 +72,114 @@ def create_drawing_interface():
         st.text(str(flattened.astype(int)))
 
 
-def train_model(model, **kwargs):
-    """Train the model and capture output"""
+def train_model(model_name, model_instance, **kwargs):
+    """Train a single model and capture output and history."""
     output_buffer = io.StringIO()
+    success = False
+    training_history = {"loss": [], "accuracy": [], "epochs": []}
 
-    # Create a progress bar
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    try:
+        # Before training, ensure the model's history is clear for a fresh run
+        if hasattr(model_instance, 'train_history'):
+            model_instance.train_history = [] 
 
-    # Capture training output
-    with redirect_stdout(output_buffer):
-        try:
-            # Train the model
-            model.train(**kwargs)
+        with redirect_stdout(output_buffer):
+            model_instance.train(**kwargs)
 
-            # Get training history from the model after training
-            if hasattr(model, "train_history") and model.train_history:
-                history_df = pd.DataFrame(model.train_history)
-                st.session_state.training_history = {
-                    "epochs": history_df["epoch"].tolist(),
-                    "loss": history_df["loss"].tolist(),
-                    "accuracy": history_df["accuracy"].tolist(),
-                }
+        if hasattr(model_instance, "train_history") and model_instance.train_history:
+            history_df = pd.DataFrame(model_instance.train_history)
+            training_history = {
+                "epochs": history_df["epoch"].tolist(),
+                "loss": history_df["loss"].tolist(),
+                "accuracy": history_df["accuracy"].tolist(),
+            }
+        success = True
+    except Exception as e:
+        st.error(f"Training {model_name} failed: {str(e)}")
 
-        except Exception as e:
-            st.error(f"Training failed: {str(e)}")
-            return False
-
-    progress_bar.progress(1.0)
-    status_text.text("Training completed!")
-
-    # Display training output
-    training_output = output_buffer.getvalue()
-    if training_output:
-        with st.expander("Training Output"):
-            st.text(training_output)
-
-    return True
+    return success, output_buffer.getvalue(), training_history
 
 
-def display_training_plots():
-    """Display training loss and accuracy plots using model history"""
-    if not st.session_state.training_history["loss"]:
+def display_training_comparison(training_results):
+    """Display training results in a comparative table and plots."""
+    if not training_results:
         return
 
-    fig = make_subplots(
-        rows=1,
-        cols=2,
-        subplot_titles=("Training Loss", "Training Accuracy"),
-        specs=[[{"secondary_y": False}, {"secondary_y": False}]],
-    )
+    st.subheader("Training Results Comparison")
 
-    # Loss plot
-    fig.add_trace(
-        go.Scatter(
-            x=st.session_state.training_history["epochs"],
-            y=st.session_state.training_history["loss"],
-            mode="lines+markers",
-            name="Loss",
-            line=dict(color="red", width=2),
-            marker=dict(size=4),
-        ),
-        row=1,
-        col=1,
-    )
-
-    # Accuracy plot
-    fig.add_trace(
-        go.Scatter(
-            x=st.session_state.training_history["epochs"],
-            y=st.session_state.training_history["accuracy"],
-            mode="lines+markers",
-            name="Accuracy",
-            line=dict(color="blue", width=2),
-            marker=dict(size=4),
-        ),
-        row=1,
-        col=2,
-    )
-
-    fig.update_layout(
-        title="Training Metrics Over Time",
-        showlegend=False,
-        height=400,
-        template="plotly_white",
-    )
-
-    fig.update_xaxes(title_text="Epoch", row=1, col=1)
-    fig.update_xaxes(title_text="Epoch", row=1, col=2)
-    fig.update_yaxes(title_text="Loss", row=1, col=1)
-    fig.update_yaxes(title_text="Accuracy", row=1, col=2)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def display_training_history_table():
-    """Display training history as a dataframe table"""
-    if (
-        st.session_state.model
-        and hasattr(st.session_state.model, "train_history")
-        and st.session_state.model.train_history
-    ):
-        st.subheader("Training History Details")
-
-        # Get history dataframe from model
-        history_df = pd.DataFrame(st.session_state.model.train_history)
-
-        # Display basic statistics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Epochs", len(history_df))
-        with col2:
-            st.metric("Final Loss", f"{history_df['loss'].iloc[-1]:.4f}")
-        with col3:
-            st.metric("Final Accuracy", f"{history_df['accuracy'].iloc[-1]:.4f}")
-        with col4:
-            st.metric("Best Accuracy", f"{history_df['accuracy'].max():.4f}")
-
-        # Show the dataframe
-        with st.expander("View Full Training History"):
-            st.dataframe(history_df.round(4), use_container_width=True, height=300)
-
-        # Download button for history
-        csv = history_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Training History as CSV",
-            data=csv,
-            file_name="training_history.csv",
-            mime="text/csv",
+    # Prepare data for the table
+    table_data = []
+    for model_name, result in training_results.items():
+        final_loss = result["training_history"]["loss"][-1] if result["training_history"]["loss"] else np.nan
+        final_accuracy = result["training_history"]["accuracy"][-1] if result["training_history"]["accuracy"] else np.nan
+        best_accuracy = max(result["training_history"]["accuracy"]) if result["training_history"]["accuracy"] else np.nan
+        table_data.append(
+            {
+                "Model": model_name,
+                "Final Loss": f"{final_loss:.4f}",
+                "Final Accuracy": f"{final_accuracy:.4f}",
+                "Best Accuracy": f"{best_accuracy:.4f}"
+            }
         )
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True)
+
+    # Plotting Loss and Accuracy over Epochs for all models
+    st.subheader("Training Metrics Over Time (Comparison)")
+
+    fig_loss = go.Figure()
+    fig_accuracy = go.Figure()
+
+    for model_name, result in training_results.items():
+        history = result["training_history"]
+        if history["epochs"]:
+            fig_loss.add_trace(
+                go.Scatter(
+                    x=history["epochs"],
+                    y=history["loss"],
+                    mode="lines",
+                    name=f"{model_name} Loss",
+                )
+            )
+            fig_accuracy.add_trace(
+                go.Scatter(
+                    x=history["epochs"],
+                    y=history["accuracy"],
+                    mode="lines",
+                    name=f"{model_name} Accuracy",
+                )
+            )
+
+    fig_loss.update_layout(
+        title="Training Loss Comparison",
+        xaxis_title="Epoch",
+        yaxis_title="Loss",
+        hovermode="x unified",
+    )
+    fig_accuracy.update_layout(
+        title="Training Accuracy Comparison",
+        xaxis_title="Epoch",
+        yaxis_title="Accuracy",
+        hovermode="x unified",
+    )
+
+    st.plotly_chart(fig_loss, use_container_width=True)
+    st.plotly_chart(fig_accuracy, use_container_width=True)
+
+    # Display full training history dataframes in expanders
+    st.subheader("Detailed Training History")
+    for model_name, result in training_results.items():
+        if result["training_history"]["epochs"]:
+            with st.expander(f"View {model_name} Training History"):
+                history_df = pd.DataFrame(result["training_history"])
+                st.dataframe(history_df.round(4), use_container_width=True, height=200)
+                csv = history_df.to_csv(index=False)
+                st.download_button(
+                    label=f"📥 Download {model_name} History as CSV",
+                    data=csv,
+                    file_name=f"{model_name}_training_history.csv",
+                    mime="text/csv",
+                    key=f"download_{model_name}"
+                )
 
 
 def main():
@@ -270,33 +254,40 @@ def main():
     if "prev_file_path" not in st.session_state:
         st.session_state.prev_file_path = None
 
-    # Detect data source or file path change and reset model if needed
+    # Detect data source or file path change and reset models if needed
     if st.session_state.prev_data_source != data_source or (
         file_path is not None and st.session_state.prev_file_path != str(file_path)
     ):
-        st.session_state.model = None
+        st.session_state.models = {}
+        st.session_state.training_results = {}
         st.session_state.is_trained = False
-        st.session_state.training_history = {"loss": [], "accuracy": [], "epochs": []}
         st.session_state.prev_data_source = data_source
         st.session_state.prev_file_path = (
             str(file_path) if file_path is not None else None
         )
 
-    # Initialize model if file path is available
-    if file_path is not None and st.session_state.model is None:
+    # Initialize all models if file path is available and models are not initialized
+    # OR if file_path has changed, re-initialize them
+    if file_path is not None and (not st.session_state.models or st.session_state.prev_file_path != str(file_path)):
         try:
-            st.session_state.model = ocr(file_path)
-            st.sidebar.success("✅ Model initialized successfully!")
-            st.sidebar.write(f"📊 Features shape: {st.session_state.model.X.shape}")
-            st.sidebar.write(f"🏷️ Labels shape: {st.session_state.model.Y.shape}")
-            st.sidebar.write(
-                f"🔢 Input features: {st.session_state.model.X.shape[1]} (row + column sums)"
-            )
-            st.sidebar.write(
-                f"🎯 Target range: {st.session_state.model.Y.min():.0f} - {st.session_state.model.Y.max():.0f} (ASCII values)"
-            )
+            st.session_state.models["PerceptronOCR"] = PerceptronOCR(file_path)
+            st.session_state.models["GlorotOCR"] = GlorotOCR(file_path)
+            st.session_state.models["KaimingOCR"] = KaimingOCR(file_path)
+
+            st.sidebar.success("✅ All models initialized successfully!")
+            # Display info from the first initialized model (they all preprocess data similarly)
+            if "PerceptronOCR" in st.session_state.models:
+                model_ref = st.session_state.models["PerceptronOCR"]
+                st.sidebar.write(f"📊 Features shape: {model_ref.X.shape}")
+                st.sidebar.write(f"🏷️ Labels shape: {model_ref.Y.shape}")
+                st.sidebar.write(
+                    f"🔢 Input features: {model_ref.X.shape[1]} (row + column sums)"
+                )
+                st.sidebar.write(
+                    f"🎯 Target range: {model_ref.Y.min():.0f} - {model_ref.Y.max():.0f} (ASCII values)"
+                )
         except Exception as e:
-            st.sidebar.error(f"❌ Error initializing model: {str(e)}")
+            st.sidebar.error(f"❌ Error initializing models: {str(e)}")
             st.sidebar.error("Please check your file format.")
             return
     elif file_path is None:
@@ -312,15 +303,13 @@ def main():
     st.sidebar.subheader("Neural Network Parameters")
 
     # Auto-detect input size based on format
-    if st.session_state.model is not None:
-        default_input_size = st.session_state.model.X.shape[1]
+    default_input_size = 12
+    default_hidden_size = 16
+    if "PerceptronOCR" in st.session_state.models:
+        default_input_size = st.session_state.models["PerceptronOCR"].X.shape[1]
         st.sidebar.info(
             f"CSV Mode: Using {default_input_size} features (row + column sums)"
         )
-        default_hidden_size = 16
-    else:
-        default_input_size = 12
-        default_hidden_size = 16
 
     input_size = st.sidebar.number_input(
         "Input Size", value=default_input_size, min_value=1, max_value=1000
@@ -346,113 +335,188 @@ def main():
         st.subheader("Model Training")
 
         if st.button(
-            "🚀 Train Model", type="primary", disabled=(st.session_state.model is None)
+            "🚀 Train All Models", type="primary", disabled=(not st.session_state.models)
         ):
-            with st.spinner("Training model..."):
-                success = train_model(
-                    st.session_state.model,
-                    input_size=input_size,
-                    hidden_size=hidden_size,
-                    learning_rate=learning_rate,
-                    epochs=epochs,
-                )
-                if success:
-                    st.session_state.is_trained = True
-                    st.success("✅ Model trained successfully!")
+            st.session_state.training_results = {}
+            all_trained_successfully = True
 
-                    # Show sample predictions
-                    st.subheader("Sample Predictions")
-                    output_buffer = io.StringIO()
-                    with redirect_stdout(output_buffer):
-                        st.session_state.model.sample_predict()
+            # Re-initialize models before training if they already exist
+            if file_path is not None:
+                try:
+                    st.session_state.models["PerceptronOCR"] = PerceptronOCR(file_path)
+                    st.session_state.models["GlorotOCR"] = GlorotOCR(file_path)
+                    st.session_state.models["KaimingOCR"] = KaimingOCR(file_path)
+                    st.info("🔄 Re-initialized all models for a fresh training run.")
+                except Exception as e:
+                    st.error(f"❌ Error re-initializing models: {str(e)}")
+                    st.session_state.is_trained = False
+                    return # Stop if re-initialization fails
 
-                    sample_output = output_buffer.getvalue()
-                    st.session_state.sample_output = sample_output
-                    if sample_output:
-                        st.text(sample_output)
+            for model_name, model_instance in st.session_state.models.items():
+                st.info(f"Training {model_name}...")
+                progress_bar = st.progress(0, text=f"Training {model_name}...")
+                
+                # Use a specific key for each model's spinner to avoid conflicts
+                with st.spinner(f"Training {model_name} model..."):
+                    success, output, history = train_model(
+                        model_name,
+                        model_instance,
+                        input_size=input_size,
+                        hidden_size=hidden_size,
+                        learning_rate=learning_rate,
+                        epochs=epochs,
+                    )
+                    st.session_state.training_results[model_name] = {
+                        "output": output,
+                        "training_history": history,
+                    }
+                    if not success:
+                        all_trained_successfully = False
+                
+                progress_bar.progress(1.0, text=f"{model_name} training complete!")
+                st.success(f"✅ {model_name} trained successfully!")
+                with st.expander(f"View {model_name} Training Output"):
+                    st.text(output)
 
-                    # Store training output in session state
-                    training_output = st.session_state.get("training_output", None)
-                    if training_output is None:
-                        training_output = ""
-                    st.session_state.training_output = training_output
 
-        # Always display sample predictions and training output if available
-        if st.session_state.get("sample_output"):
-            st.subheader("Sample Predictions")
-            st.text(st.session_state["sample_output"])
-        if st.session_state.get("training_output"):
-            with st.expander("Training Output"):
-                st.text(st.session_state["training_output"])
+            st.session_state.is_trained = all_trained_successfully
+            if all_trained_successfully:
+                st.success("✅ All models trained successfully!")
+            else:
+                st.warning("Training completed with some failures.")
+            st.rerun() # Rerun to update the display
 
-        # Display training metrics if available
-        if st.session_state.is_trained and st.session_state.training_history["loss"]:
-            st.subheader("Training Metrics")
-            final_loss = (
-                st.session_state.training_history["loss"][-1]
-                if st.session_state.training_history["loss"]
-                else 0
-            )
-            final_accuracy = (
-                st.session_state.training_history["accuracy"][-1]
-                if st.session_state.training_history["accuracy"]
-                else 0
-            )
 
-            metric_col1, metric_col2, metric_col3 = st.columns(3)
-            with metric_col1:
-                st.metric("Final Loss", f"{final_loss:.4f}")
-            with metric_col2:
-                st.metric("Final Accuracy", f"{final_accuracy:.4f}")
-            with metric_col3:
-                st.metric("Epochs", epochs)
+        # Display training comparison table and plots if results exist
+        if st.session_state.is_trained and st.session_state.training_results:
+            display_training_comparison(st.session_state.training_results)
+            st.markdown("---")
+            st.subheader("Sample Predictions from Trained Models")
+            for model_name, model_instance in st.session_state.models.items():
+                with st.expander(f"Sample Predictions for {model_name}"):
+                    sample_output_buffer = io.StringIO()
+                    with redirect_stdout(sample_output_buffer):
+                        model_instance.sample_predict()
+                    st.text(sample_output_buffer.getvalue())
+
 
     with col2:
         # Inference section
         st.subheader("Character Inference")
 
         if not st.session_state.is_trained:
-            st.info("🔒 Please train the model first to enable inference.")
+            st.info("🔒 Please train the models first to enable inference.")
         else:
             # Drawing interface
             create_drawing_interface()
+
+            # Custom pixel input
+            st.subheader("Or Input Custom Pixel Data")
+            custom_pixel_input = st.text_input(
+                "Enter 35 pixel values (0 or 1) followed by ASCII label (e.g., 0,1,1,1,0,...,48):",
+                key="custom_pixel_input"
+            )
 
             # Inference button
             if st.button(
                 "🔍 Predict Character", disabled=not st.session_state.is_trained
             ):
-                if st.session_state.is_trained and st.session_state.model is not None:
+                if st.session_state.is_trained and st.session_state.models:
+                    st.subheader("Prediction Results")
+
+                    # Prediction for drawn grid
                     try:
-                        # Only CSV format: compute 12-element feature vector
+                        st.write("#### Prediction for Drawn Grid:")
                         grid = st.session_state.drawing_grid
+                        
+                        # Display the drawn grid
+                        st.text("Drawn Grid (7x5):")
+                        for row in grid.astype(int):
+                            st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
+                        
                         row_sums = np.sum(grid, axis=1)
                         col_sums = np.sum(grid, axis=0)
-                        input_features = np.concatenate([row_sums, col_sums]).reshape(
+                        input_features_drawn = np.concatenate([row_sums, col_sums]).reshape(
                             1, -1
                         )
+                        for model_name, model_instance in st.session_state.models.items():
+                            prediction = model_instance.predict(input_features_drawn)
+                            pred_ascii = int(np.round(prediction[0]))
+                            predicted_char = (
+                                chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
+                            )
+                            raw_output = float(prediction[0])
 
-                        # Make prediction (regression)
-                        prediction = st.session_state.model.predict(input_features)
-                        pred_ascii = int(np.round(prediction[0]))
-                        predicted_char = (
-                            chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
-                        )
-                        raw_output = float(prediction[0])
-                        st.success(f"""
+                            st.write(f"**{model_name} Prediction:**")
+                            st.info(f"""
                                    🎯 Predicted Character: **{predicted_char}**
                                    🖥 ASCII Value: **{pred_ascii}**
                                    📊 Raw Output: **{raw_output:.2f}**
                                    """)
+                        st.markdown("---")
 
-                        # Show feature vector
-                        st.subheader("Feature Analysis")
+                        st.subheader("Feature Analysis (Input to Models - Drawn Grid)")
                         st.write(f"Row sums (7 values): {row_sums}")
                         st.write(f"Column sums (5 values): {col_sums}")
                         st.write(
                             f"Combined features (12 values): {np.concatenate([row_sums, col_sums])}"
                         )
                     except Exception as e:
-                        st.error(f"❌ Prediction failed: {str(e)}")
+                        st.error(f"❌ Prediction for drawn grid failed: {str(e)}")
+
+                    # Prediction for custom input
+                    if custom_pixel_input:
+                        st.markdown("---")
+                        st.write("#### Prediction for Custom Input:")
+                        try:
+                            values = [int(x.strip()) for x in custom_pixel_input.split(',')]
+                            if len(values) == 36: # 35 pixels + 1 label
+                                pixel_values = np.array(values[:35]).reshape(7, 5)
+                                true_label_ascii = values[35]
+                                true_char = chr(true_label_ascii) if 32 <= true_label_ascii <= 126 else "?"
+
+                                # Display the custom input grid
+                                st.text("Custom Input Grid (7x5):")
+                                for row in pixel_values.astype(int):
+                                    st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
+
+                                st.write(f"Provided Label (ASCII): {true_label_ascii} ('{true_char}')")
+
+                                row_sums_custom = np.sum(pixel_values, axis=1)
+                                col_sums_custom = np.sum(pixel_values, axis=0)
+                                input_features_custom = np.concatenate([row_sums_custom, col_sums_custom]).reshape(
+                                    1, -1
+                                )
+
+                                for model_name, model_instance in st.session_state.models.items():
+                                    prediction = model_instance.predict(input_features_custom)
+                                    pred_ascii = int(np.round(prediction[0]))
+                                    predicted_char = (
+                                        chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
+                                    )
+                                    raw_output = float(prediction[0])
+
+                                    st.write(f"**{model_name} Prediction:**")
+                                    st.info(f"""
+                                           🎯 Predicted Character: **{predicted_char}**
+                                           🖥 ASCII Value: **{pred_ascii}**
+                                           📊 Raw Output: **{raw_output:.2f}**
+                                           """)
+                                st.markdown("---")
+
+                                st.subheader("Feature Analysis (Input to Models - Custom Input)")
+                                st.write(f"Row sums (7 values): {row_sums_custom}")
+                                st.write(f"Column sums (5 values): {col_sums_custom}")
+                                st.write(
+                                    f"Combined features (12 values): {np.concatenate([row_sums_custom, col_sums_custom])}"
+                                )
+
+                            else:
+                                st.warning("Please enter exactly 35 pixel values and 1 ASCII label, separated by commas.")
+                        except ValueError:
+                            st.error("Invalid input format. Please ensure all values are numbers separated by commas.")
+                        except Exception as e:
+                            st.error(f"❌ Prediction for custom input failed: {str(e)}")
 
 
 # Run the app
