@@ -337,7 +337,7 @@ def main():
         step=0.001,
         format="%.3f",
     )
-    epochs = st.sidebar.number_input("Epochs", value=1000, min_value=1, max_value=10000)
+    epochs = st.sidebar.number_input("Epochs", value=10000, min_value=1, max_value=500000)
 
     # Main interface
     col1, col2 = st.columns([1, 1])
