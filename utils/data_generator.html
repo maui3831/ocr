@@ -274,7 +274,8 @@
           });
 
           if (isValid && csvRows.length > 0) {
-            const csvContent = csvRows.join("\n");
+            const csvHeader = "pixel_0,pixel_1,pixel_2,pixel_3,pixel_4,pixel_5,pixel_6,pixel_7,pixel_8,pixel_9,pixel_10,pixel_11,pixel_12,pixel_13,pixel_14,pixel_15,pixel_16,pixel_17,pixel_18,pixel_19,pixel_20,pixel_21,pixel_22,pixel_23,pixel_24,pixel_25,pixel_26,pixel_27,pixel_28,pixel_29,pixel_30,pixel_31,pixel_32,pixel_33,pixel_34,label";
+            const csvContent = csvHeader + "\n" + csvRows.join("\n");
             const blob = new Blob([csvContent], {
               type: "text/csv;charset=utf-8;",
             });
