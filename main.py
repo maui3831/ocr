@@ -203,14 +203,32 @@ def main():
 
     # Data source selection
     st.sidebar.subheader("Data Source")
+    
+    # Dynamically discover CSV files in the data folder
+    data_folder = Path("./data")
+    csv_files = []
+    csv_options = ["Upload CSV File"]  # Always include upload option
+    csv_file_mapping = {}  # Map display names to file paths
+    
+    if data_folder.exists():
+        # Find all CSV files in the data folder
+        csv_files = list(data_folder.glob("*.csv"))
+        for csv_file in sorted(csv_files):
+            # Create a user-friendly display name
+            display_name = f"Use {csv_file.stem.replace('_', ' ').title()} Dataset"
+            csv_options.append(display_name)
+            csv_file_mapping[display_name] = csv_file
+    
+    # Show available datasets info
+    if csv_files:
+        st.sidebar.info(f"Found {len(csv_files)} CSV dataset(s) in data folder")
+    else:
+        st.sidebar.warning("No CSV files found in data folder")
+    
     data_source = st.sidebar.radio(
         "Choose data source:",
-        options=[
-            "Upload CSV File",
-            "Use CSV Digits Dataset",
-            "Use More Digits Dataset",
-        ],
-        help="Upload your own CSV file or use the digits CSV dataset",
+        options=csv_options,
+        help="Upload your own CSV file or use available datasets from the data folder",
     )
 
     file_path = None
@@ -233,32 +251,22 @@ def main():
 
             st.sidebar.success("✅ File uploaded successfully!")
 
-    elif data_source == "Use CSV Digits Dataset":
-        # Check if CSV dataset exists
-
-        csv_path = Path("./data/digits_data.csv")
-
+    elif data_source in csv_file_mapping:
+        # Use one of the discovered CSV datasets
+        csv_path = csv_file_mapping[data_source]
+        
         if csv_path.exists():
             file_path = str(csv_path)
-            st.sidebar.success("✅ CSV digits dataset found!")
+            st.sidebar.success(f"✅ {data_source} found!")
             st.sidebar.info(f"Using: {csv_path}")
         else:
-            st.sidebar.error("❌ CSV digits dataset not found!")
-            st.sidebar.error("Please ensure ./digits_data.csv exists or upload a file.")
+            st.sidebar.error(f"❌ {data_source} not found!")
+            st.sidebar.error(f"File {csv_path} does not exist.")
 
-    elif data_source == "Use More Digits Dataset":
-        # Check if More Digits dataset exists
-        csv_path = Path("./data/more_digits_data.csv")
-
-        if csv_path.exists():
-            file_path = str(csv_path)
-            st.sidebar.success("✅ More digits dataset found!")
-            st.sidebar.info(f"Using: {csv_path}")
-        else:
-            st.sidebar.error("❌ More digits dataset not found!")
-            st.sidebar.error(
-                "Please ensure ./more_digits_data.csv exists or upload a file."
-            )
+    else:
+        # Fallback for any unknown data source
+        st.sidebar.error(f"❌ Unknown data source: {data_source}")
+        st.sidebar.error("Please select a valid data source option.")
 
     # Track previous data source and file path
     if "prev_data_source" not in st.session_state:
@@ -305,9 +313,9 @@ def main():
     elif file_path is None:
         if data_source == "Upload CSV File":
             st.info("📁 Please upload a CSV file to begin.")
-        elif data_source == "Use CSV Digits Dataset":
+        else:
             st.error(
-                "📁 CSV digits dataset not found. Please upload a file or ensure ./digits_data.csv exists."
+                f"📁 {data_source} not found. Please upload a file or ensure the CSV exists in the data folder."
             )
         return
 
