@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import io
 from pathlib import Path
 from contextlib import redirect_stdout
@@ -30,36 +29,49 @@ if "drawing_grid" not in st.session_state:
 
 
 def create_drawing_interface():
-    """Create a 5x7 pixel drawing interface"""
+    """Create a 5x7 pixel drawing interface using dataframe with checkboxes"""
     st.subheader("Draw a Character (5x7 pixels)")
 
-    # Create buttons for each pixel
-    cols = st.columns(5)
+    # Create a dataframe for the drawing grid
+    # Convert numpy array to dataframe with boolean values for checkboxes
+    grid_df = pd.DataFrame(
+        st.session_state.drawing_grid.astype(bool),
+        columns=[f"Col_{i}" for i in range(5)],
+        index=[f"Row_{i}" for i in range(7)]
+    )
 
-    for row in range(7):
-        for col in range(5):
-            with cols[col]:
-                # Create a button for each pixel
-                if st.button(
-                    "🟩" if st.session_state.drawing_grid[row, col] == 1 else "⬜",
-                    key=f"pixel_{row}_{col}",
-                    help=f"Pixel ({row}, {col})",
-                ):
-                    # Toggle pixel
-                    st.session_state.drawing_grid[row, col] = (
-                        1 - st.session_state.drawing_grid[row, col]
-                    )
-                    st.rerun()
+    # Use data_editor with checkboxes (without automatic updates)
+    edited_df = st.data_editor(
+        grid_df,
+        use_container_width=True,
+        hide_index=False,
+        column_config={
+            f"Col_{i}": st.column_config.CheckboxColumn(
+                f"Col {i}",
+                help=f"Column {i}",
+                default=False,
+            ) for i in range(5)
+        },
+        key="drawing_grid_editor",
+        disabled=False
+    )
 
     # Control buttons
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        if st.button("Clear Grid"):
-            st.session_state.drawing_grid = np.zeros((7, 5))
+        if st.button("📝 Update Grid", type="primary", help="Apply your checkbox changes to the drawing grid"):
+            st.session_state.drawing_grid = edited_df.values.astype(int)
+            st.success("✅ Grid updated!")
             st.rerun()
 
     with col2:
-        if st.button("Fill Grid"):
+        if st.button("🧹 Clear Grid"):
+            st.session_state.drawing_grid = np.zeros((7, 5))
+            st.rerun()
+
+    with col3:
+        if st.button("🟩 Fill Grid"):
             st.session_state.drawing_grid = np.ones((7, 5))
             st.rerun()
 
@@ -407,80 +419,89 @@ def main():
         if not st.session_state.is_trained:
             st.info("🔒 Please train the models first to enable inference.")
         else:
-            # Drawing interface
-            create_drawing_interface()
+            # Create tabs for different input methods
+            tab1, tab2 = st.tabs(["🎨 Drawing Grid", "⌨️ Custom Input"])
+            
+            with tab1:
+                # Drawing interface
+                create_drawing_interface()
+                
+                # Inference button for drawing grid
+                if st.button(
+                    "🔍 Predict Character from Grid", 
+                    disabled=not st.session_state.is_trained,
+                    key="predict_grid"
+                ):
+                    if st.session_state.is_trained and st.session_state.models:
+                        st.subheader("Prediction Results - Drawing Grid")
 
-            # Custom pixel input
-            st.subheader("Or Input Custom Pixel Data")
-            custom_pixel_input = st.text_input(
-                "Enter 35 pixel values (0 or 1) followed by ASCII label (e.g., 0,1,1,1,0,...,48):",
-                key="custom_pixel_input"
-            )
-
-            # Inference button
-            if st.button(
-                "🔍 Predict Character", disabled=not st.session_state.is_trained
-            ):
-                if st.session_state.is_trained and st.session_state.models:
-                    st.subheader("Prediction Results")
-
-                    # Prediction for drawn grid
-                    try:
-                        st.write("#### Prediction for Drawn Grid:")
-                        grid = st.session_state.drawing_grid
-                        
-                        # Display the drawn grid
-                        st.text("Drawn Grid (7x5):")
-                        for row in grid.astype(int):
-                            st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
-                        
-                        row_sums = np.sum(grid, axis=1)
-                        col_sums = np.sum(grid, axis=0)
-                        input_features_drawn = np.concatenate([row_sums, col_sums]).reshape(
-                            1, -1
-                        )
-                        for model_name, model_instance in st.session_state.models.items():
-                            prediction = model_instance.predict(input_features_drawn)
-                            pred_ascii = int(np.round(prediction[0]))
-                            predicted_char = (
-                                chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
+                        # Prediction for drawn grid
+                        try:
+                            grid = st.session_state.drawing_grid
+                            
+                            # Display the drawn grid
+                            st.text("Drawn Grid (7x5):")
+                            for row in grid.astype(int):
+                                st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
+                            
+                            row_sums = np.sum(grid, axis=1)
+                            col_sums = np.sum(grid, axis=0)
+                            input_features_drawn = np.concatenate([row_sums, col_sums]).reshape(
+                                1, -1
                             )
-                            raw_output = float(prediction[0])
+                            for model_name, model_instance in st.session_state.models.items():
+                                prediction = model_instance.predict(input_features_drawn)
+                                pred_ascii = int(np.round(prediction[0]))
+                                predicted_char = (
+                                    chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
+                                )
+                                raw_output = float(prediction[0])
 
-                            st.write(f"**{model_name} Prediction:**")
-                            st.info(f"""
-                                   🎯 Predicted Character: **{predicted_char}**
-                                   🖥 ASCII Value: **{pred_ascii}**
-                                   📊 Raw Output: **{raw_output:.2f}**
-                                   """)
-                        st.markdown("---")
+                                st.write(f"**{model_name} Prediction:**")
+                                st.info(f"""
+                                       🎯 Predicted Character: **{predicted_char}**
+                                       🖥 ASCII Value: **{pred_ascii}**
+                                       📊 Raw Output: **{raw_output:.2f}**
+                                       """)
+                            st.markdown("---")
 
-                        st.subheader("Feature Analysis (Input to Models - Drawn Grid)")
-                        st.write(f"Row sums (7 values): {row_sums}")
-                        st.write(f"Column sums (5 values): {col_sums}")
-                        st.write(
-                            f"Combined features (12 values): {np.concatenate([row_sums, col_sums])}"
-                        )
-                    except Exception as e:
-                        st.error(f"❌ Prediction for drawn grid failed: {str(e)}")
+                            st.subheader("Feature Analysis (Input to Models - Drawn Grid)")
+                            st.write(f"Row sums (7 values): {row_sums}")
+                            st.write(f"Column sums (5 values): {col_sums}")
+                            st.write(
+                                f"Combined features (12 values): {np.concatenate([row_sums, col_sums])}"
+                            )
+                        except Exception as e:
+                            st.error(f"❌ Prediction for drawn grid failed: {str(e)}")
+            
+            with tab2:
+                # Custom pixel input
+                st.subheader("Input Custom Pixel Data")
+                custom_pixel_input = st.text_input(
+                    "Enter 35 pixel values (0 or 1) separated by commas (e.g., 0,1,1,1,0,1,0,...):",
+                    key="custom_pixel_input",
+                    help="Enter exactly 35 values for a 7x5 pixel grid"
+                )
+                
+                # Inference button for custom input
+                if st.button(
+                    "🔍 Predict Character from Custom Input", 
+                    disabled=not st.session_state.is_trained,
+                    key="predict_custom"
+                ):
+                    if st.session_state.is_trained and st.session_state.models and custom_pixel_input:
+                        st.subheader("Prediction Results - Custom Input")
 
-                    # Prediction for custom input
-                    if custom_pixel_input:
-                        st.markdown("---")
-                        st.write("#### Prediction for Custom Input:")
+                        # Prediction for custom input
                         try:
                             values = [int(x.strip()) for x in custom_pixel_input.split(',')]
-                            if len(values) == 36: # 35 pixels + 1 label
-                                pixel_values = np.array(values[:35]).reshape(7, 5)
-                                true_label_ascii = values[35]
-                                true_char = chr(true_label_ascii) if 32 <= true_label_ascii <= 126 else "?"
+                            if len(values) == 35: # 35 pixels only
+                                pixel_values = np.array(values).reshape(7, 5)
 
                                 # Display the custom input grid
                                 st.text("Custom Input Grid (7x5):")
                                 for row in pixel_values.astype(int):
                                     st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
-
-                                st.write(f"Provided Label (ASCII): {true_label_ascii} ('{true_char}')")
 
                                 row_sums_custom = np.sum(pixel_values, axis=1)
                                 col_sums_custom = np.sum(pixel_values, axis=0)
@@ -512,11 +533,13 @@ def main():
                                 )
 
                             else:
-                                st.warning("Please enter exactly 35 pixel values and 1 ASCII label, separated by commas.")
+                                st.warning("Please enter exactly 35 pixel values separated by commas.")
                         except ValueError:
                             st.error("Invalid input format. Please ensure all values are numbers separated by commas.")
                         except Exception as e:
                             st.error(f"❌ Prediction for custom input failed: {str(e)}")
+                    elif not custom_pixel_input:
+                        st.warning("Please enter custom pixel data first.")
 
 
 # Run the app
