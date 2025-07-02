@@ -120,8 +120,6 @@ def display_training_metrics(training_results):
 
     st.subheader("Training Results Metrics")
 
-    # Prepare data for the table
-    table_data = []
     for model_name, result in training_results.items():
         final_loss = (
             result["training_history"]["loss"][-1]
@@ -133,14 +131,11 @@ def display_training_metrics(training_results):
             if result["training_history"]["accuracy"]
             else np.nan
         )
-        table_data.append(
-            {
-                "Model": model_name,
-                "Final Loss": f"{final_loss:.4f}",
-                "Final Accuracy": f"{final_accuracy:.4f}",
-            }
-        )
-    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Final Loss", value=f"{final_loss:.4f}")
+        with col2:
+            st.metric(label="Final Accuracy", value=f"{final_accuracy:.4f}")
 
     # Plotting Loss and Accuracy over Epochs for all models
     st.subheader("Training Metrics Over Time")
@@ -188,7 +183,7 @@ def display_training_metrics(training_results):
     st.subheader("Detailed Training History")
     for model_name, result in training_results.items():
         if result["training_history"]["epochs"]:
-            with st.expander(f"View {model_name} Training History"):
+            with st.expander("View Training History"):
                 history_df = pd.DataFrame(result["training_history"])
                 st.dataframe(
                     history_df.round(4),
@@ -413,9 +408,9 @@ def main():
         if st.session_state.is_trained and st.session_state.training_results:
             display_training_metrics(st.session_state.training_results)
             st.markdown("---")
-            st.subheader("Sample Predictions from Trained Models")
+            st.subheader("Sample Predictions")
             for model_name, model_instance in st.session_state.models.items():
-                with st.expander(f"Sample Predictions for {model_name}"):
+                with st.expander("View Sample Predictions"):
                     sample_output_buffer = io.StringIO()
                     with redirect_stdout(sample_output_buffer):
                         model_instance.sample_predict()
@@ -576,6 +571,5 @@ def main():
                         st.warning("Please enter custom pixel data first.")
 
 
-# Run the app
 if __name__ == "__main__":
     main()
