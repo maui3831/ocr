@@ -14,7 +14,7 @@ class PerceptronOCR:
         self.input_file = input_file
         self.df = pd.read_csv(input_file)
 
-        self.X, self.Y = self._preprocess_csv()
+        self.X, self.Y = self.preprocess()
         logging.info(f"Features shape: {self.X.shape}")
         logging.info(f"Labels shape: {self.Y.shape}")
 
@@ -27,8 +27,7 @@ class PerceptronOCR:
         # training history
         self.train_history = []
 
-    # internal functions
-    def _preprocess_csv(self):
+    def preprocess(self):
         features = []
         labels = []
         unique_labels = sorted(self.df["label"].unique())
@@ -47,10 +46,6 @@ class PerceptronOCR:
 
         return np.array(features), np.array(labels).astype(np.int32).reshape(-1, 1)
 
-    def preprocess(self):
-        # Only CSV supported
-        return self._preprocess_csv()
-
     # activation functions
     def softmax(self, x):
         exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
@@ -62,9 +57,6 @@ class PerceptronOCR:
     def relu_deriv(self, x):
         return (x > 0).astype(float)
 
-    def mse(self, pred, true):
-        return np.mean((pred - true) ** 2)
-
     def accuracy(self, pred, true):
         pred_class = np.argmax(pred, axis=1)
         true_class = true.flatten()
@@ -75,6 +67,10 @@ class PerceptronOCR:
         p = pred[range(m), true.flatten()]
         log_likelihood = -np.log(p + 1e-8)
         return np.mean(log_likelihood)
+
+    def he(self, input_size, hidden_size):
+        """He initialization for ReLU layers."""
+        return np.random.randn(input_size, hidden_size) * np.sqrt(2.0 / input_size)
 
     # training function
     def train(
@@ -90,9 +86,9 @@ class PerceptronOCR:
         output_size = len(self.label_to_idx)  # Number of classes
 
         # He initialization for ReLU layers
-        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2.0 / input_size)
+        self.W1 = self.he(input_size, hidden_size)
         self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2.0 / hidden_size)
+        self.W2 = self.he(hidden_size, output_size)
         self.b2 = np.zeros((1, output_size))
 
         # Feature normalization for CSV data
