@@ -120,8 +120,6 @@ def display_training_metrics(training_results):
 
     st.subheader("Training Results Metrics")
 
-    # Prepare data for the table
-    table_data = []
     for model_name, result in training_results.items():
         final_loss = (
             result["training_history"]["loss"][-1]
@@ -133,14 +131,11 @@ def display_training_metrics(training_results):
             if result["training_history"]["accuracy"]
             else np.nan
         )
-        table_data.append(
-            {
-                "Model": model_name,
-                "Final Loss": f"{final_loss:.4f}",
-                "Final Accuracy": f"{final_accuracy:.4f}",
-            }
-        )
-    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Final Loss", value=f"{final_loss:.4f}")
+        with col2:
+            st.metric(label="Final Accuracy", value=f"{final_accuracy:.4f}")
 
     # Plotting Loss and Accuracy over Epochs for all models
     st.subheader("Training Metrics Over Time")
@@ -188,7 +183,7 @@ def display_training_metrics(training_results):
     st.subheader("Detailed Training History")
     for model_name, result in training_results.items():
         if result["training_history"]["epochs"]:
-            with st.expander(f"View {model_name} Training History"):
+            with st.expander("View Training History"):
                 history_df = pd.DataFrame(result["training_history"])
                 st.dataframe(
                     history_df.round(4),
@@ -204,6 +199,35 @@ def display_training_metrics(training_results):
                     mime="text/csv",
                     key=f"download_{model_name}",
                 )
+
+
+def extract_features(grid):
+    """Extract row and column sums as features from a 7x5 grid."""
+    row_sums = np.sum(grid, axis=1)
+    col_sums = np.sum(grid, axis=0)
+    return np.concatenate([row_sums, col_sums]).reshape(1, -1), row_sums, col_sums
+
+
+def display_prediction(grid, source_label="Input"):
+    """Display prediction results and feature analysis for a given grid."""
+    st.text(f"{source_label} Grid (7x5):")
+    for row in grid.astype(int):
+        st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
+    features, row_sums, col_sums = extract_features(grid)
+    for model_name, model_instance in st.session_state.models.items():
+        prediction = model_instance.predict(features)
+        pred_class = int(prediction[0])
+        predicted_char = model_instance.idx_to_label.get(pred_class, "?")
+        st.write(f"**{model_name} Prediction:**")
+        st.info(f"""
+            🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
+            📊 Class Index: **{pred_class}**
+        """)
+    st.markdown("---")
+    st.subheader(f"Feature Analysis (Input to Models - {source_label})")
+    st.write(f"Row sums (7 values): {row_sums}")
+    st.write(f"Column sums (5 values): {col_sums}")
+    st.write(f"Combined features (12 values): {features.flatten()}")
 
 
 def main():
@@ -413,9 +437,9 @@ def main():
         if st.session_state.is_trained and st.session_state.training_results:
             display_training_metrics(st.session_state.training_results)
             st.markdown("---")
-            st.subheader("Sample Predictions from Trained Models")
+            st.subheader("Sample Predictions")
             for model_name, model_instance in st.session_state.models.items():
-                with st.expander(f"Sample Predictions for {model_name}"):
+                with st.expander("View Sample Predictions"):
                     sample_output_buffer = io.StringIO()
                     with redirect_stdout(sample_output_buffer):
                         model_instance.sample_predict()
@@ -443,49 +467,9 @@ def main():
                 ):
                     if st.session_state.is_trained and st.session_state.models:
                         st.subheader("Prediction Results - Drawing Grid")
-
-                        # Prediction for drawn grid
                         try:
-                            grid = st.session_state.drawing_grid
-
-                            # Display the drawn grid
-                            st.text("Drawn Grid (7x5):")
-                            for row in grid.astype(int):
-                                st.write(
-                                    "".join(["🟩" if p == 1 else "⬜" for p in row])
-                                )
-
-                            row_sums = np.sum(grid, axis=1)
-                            col_sums = np.sum(grid, axis=0)
-                            input_features_drawn = np.concatenate(
-                                [row_sums, col_sums]
-                            ).reshape(1, -1)
-                            for (
-                                model_name,
-                                model_instance,
-                            ) in st.session_state.models.items():
-                                prediction = model_instance.predict(
-                                    input_features_drawn
-                                )
-                                pred_class = int(prediction[0])
-                                predicted_char = model_instance.idx_to_label.get(
-                                    pred_class, "?"
-                                )
-
-                                st.write(f"**{model_name} Prediction:**")
-                                st.info(f"""
-                                       🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
-                                       📊 Class Index: **{pred_class}**
-                                       """)
-                            st.markdown("---")
-
-                            st.subheader(
-                                "Feature Analysis (Input to Models - Drawn Grid)"
-                            )
-                            st.write(f"Row sums (7 values): {row_sums}")
-                            st.write(f"Column sums (5 values): {col_sums}")
-                            st.write(
-                                f"Combined features (12 values): {np.concatenate([row_sums, col_sums])}"
+                            display_prediction(
+                                st.session_state.drawing_grid, source_label="Drawn"
                             )
                         except Exception as e:
                             st.error(f"❌ Prediction for drawn grid failed: {str(e)}")
@@ -511,57 +495,15 @@ def main():
                         and custom_pixel_input
                     ):
                         st.subheader("Prediction Results - Custom Input")
-
-                        # Prediction for custom input
                         try:
                             values = [
                                 int(x.strip()) for x in custom_pixel_input.split(",")
                             ]
                             if len(values) == 35:  # 35 pixels only
                                 pixel_values = np.array(values).reshape(7, 5)
-
-                                # Display the custom input grid
-                                st.text("Custom Input Grid (7x5):")
-                                for row in pixel_values.astype(int):
-                                    st.write(
-                                        "".join(["🟩" if p == 1 else "⬜" for p in row])
-                                    )
-
-                                row_sums_custom = np.sum(pixel_values, axis=1)
-                                col_sums_custom = np.sum(pixel_values, axis=0)
-                                input_features_custom = np.concatenate(
-                                    [row_sums_custom, col_sums_custom]
-                                ).reshape(1, -1)
-
-                                for (
-                                    model_name,
-                                    model_instance,
-                                ) in st.session_state.models.items():
-                                    prediction = model_instance.predict(
-                                        input_features_custom
-                                    )
-                                    pred_class = int(prediction[0])
-                                    predicted_char = model_instance.idx_to_label.get(
-                                        pred_class, "?"
-                                    )
-                                    raw_output = float(prediction[0])
-
-                                    st.write(f"**{model_name} Prediction:**")
-                                    st.info(f"""
-                                           🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
-                                           📊 Raw Output: **{raw_output:.2f}**
-                                           """)
-                                st.markdown("---")
-
-                                st.subheader(
-                                    "Feature Analysis (Input to Models - Custom Input)"
+                                display_prediction(
+                                    pixel_values, source_label="Custom Input"
                                 )
-                                st.write(f"Row sums (7 values): {row_sums_custom}")
-                                st.write(f"Column sums (5 values): {col_sums_custom}")
-                                st.write(
-                                    f"Combined features (12 values): {np.concatenate([row_sums_custom, col_sums_custom])}"
-                                )
-
                             else:
                                 st.warning(
                                     "Please enter exactly 35 pixel values separated by commas."
@@ -576,6 +518,5 @@ def main():
                         st.warning("Please enter custom pixel data first.")
 
 
-# Run the app
 if __name__ == "__main__":
     main()
