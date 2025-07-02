@@ -5,10 +5,6 @@ import plotly.graph_objects as go
 import io
 from pathlib import Path
 from contextlib import redirect_stdout
-
-# Import all three OCR models
-from glorot import GlorotOCR
-from kaiming import KaimingOCR
 from ocr import PerceptronOCR
 
 
@@ -291,21 +287,17 @@ def main():
     if file_path is not None and (not st.session_state.models or st.session_state.prev_file_path != str(file_path)):
         try:
             st.session_state.models["PerceptronOCR"] = PerceptronOCR(file_path)
-            st.session_state.models["GlorotOCR"] = GlorotOCR(file_path)
-            st.session_state.models["KaimingOCR"] = KaimingOCR(file_path)
-
             st.sidebar.success("✅ All models initialized successfully!")
             # Display info from the first initialized model (they all preprocess data similarly)
-            if "PerceptronOCR" in st.session_state.models:
-                model_ref = st.session_state.models["PerceptronOCR"]
-                st.sidebar.write(f"📊 Features shape: {model_ref.X.shape}")
-                st.sidebar.write(f"🏷️ Labels shape: {model_ref.Y.shape}")
-                st.sidebar.write(
-                    f"🔢 Input features: {model_ref.X.shape[1]} (row + column sums)"
-                )
-                st.sidebar.write(
-                    f"🎯 Target range: {model_ref.Y.min():.0f} - {model_ref.Y.max():.0f} (ASCII values)"
-                )
+            model_ref = st.session_state.models["PerceptronOCR"]
+            st.sidebar.write(f"📊 Features shape: {model_ref.X.shape}")
+            st.sidebar.write(f"🏷️ Labels shape: {model_ref.Y.shape}")
+            st.sidebar.write(
+                f"🔢 Input features: {model_ref.X.shape[1]} (row + column sums)"
+            )
+            st.sidebar.write(
+                f"🎯 Target range: {model_ref.Y.min():.0f} - {model_ref.Y.max():.0f} (Class indices)"
+            )
         except Exception as e:
             st.sidebar.error(f"❌ Error initializing models: {str(e)}")
             st.sidebar.error("Please check your file format.")
@@ -355,7 +347,7 @@ def main():
         st.subheader("Model Training")
 
         if st.button(
-            "🚀 Train All Models", type="primary", disabled=(not st.session_state.models)
+            "🚀 Train Model", type="primary", disabled=(not st.session_state.models)
         ):
             st.session_state.training_results = {}
             all_trained_successfully = True
@@ -364,11 +356,9 @@ def main():
             if file_path is not None:
                 try:
                     st.session_state.models["PerceptronOCR"] = PerceptronOCR(file_path)
-                    st.session_state.models["GlorotOCR"] = GlorotOCR(file_path)
-                    st.session_state.models["KaimingOCR"] = KaimingOCR(file_path)
-                    st.info("🔄 Re-initialized all models for a fresh training run.")
+                    st.info("🔄 Re-initialized model for a fresh training run.")
                 except Exception as e:
-                    st.error(f"❌ Error re-initializing models: {str(e)}")
+                    st.error(f"❌ Error re-initializing model: {str(e)}")
                     st.session_state.is_trained = False
                     return # Stop if re-initialization fails
 
@@ -459,17 +449,13 @@ def main():
                             )
                             for model_name, model_instance in st.session_state.models.items():
                                 prediction = model_instance.predict(input_features_drawn)
-                                pred_ascii = int(np.round(prediction[0]))
-                                predicted_char = (
-                                    chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
-                                )
-                                raw_output = float(prediction[0])
+                                pred_class = int(prediction[0])
+                                predicted_char = model_instance.idx_to_label.get(pred_class, "?")
 
                                 st.write(f"**{model_name} Prediction:**")
                                 st.info(f"""
-                                       🎯 Predicted Character: **{predicted_char}**
-                                       🖥 ASCII Value: **{pred_ascii}**
-                                       📊 Raw Output: **{raw_output:.2f}**
+                                       🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
+                                       📊 Class Index: **{pred_class}**
                                        """)
                             st.markdown("---")
 
@@ -519,16 +505,13 @@ def main():
 
                                 for model_name, model_instance in st.session_state.models.items():
                                     prediction = model_instance.predict(input_features_custom)
-                                    pred_ascii = int(np.round(prediction[0]))
-                                    predicted_char = (
-                                        chr(pred_ascii) if 32 <= pred_ascii <= 126 else "?"
-                                    )
+                                    pred_class = int(prediction[0])
+                                    predicted_char = model_instance.idx_to_label.get(pred_class, "?")
                                     raw_output = float(prediction[0])
 
                                     st.write(f"**{model_name} Prediction:**")
                                     st.info(f"""
-                                           🎯 Predicted Character: **{predicted_char}**
-                                           🖥 ASCII Value: **{pred_ascii}**
+                                           🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
                                            📊 Raw Output: **{raw_output:.2f}**
                                            """)
                                 st.markdown("---")
