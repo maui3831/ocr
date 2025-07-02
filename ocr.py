@@ -22,43 +22,32 @@ class PerceptronOCR:
 
     # internal functions
     def _preprocess_csv(self):
-        """Process CSV data and extract 12-element feature vectors"""
         features = []
         labels = []
+        unique_labels = sorted(self.df["label"].unique())
+        self.label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
+        self.idx_to_label = {idx: label for label, idx in self.label_to_idx.items()}
 
         for _, row in self.df.iterrows():
-            # Extract the 35 pixel values
-            pixel_values = row.iloc[:-1].values.astype(
-                np.float32
-            )  # All columns except 'label'
+            pixel_values = row.iloc[:-1].values.astype(np.float32)
             label = row["label"]
-
-            # Reshape to 7x5 grid (7 rows, 5 columns)
             grid = pixel_values.reshape(7, 5)
-
-            # Compute row sums (7 values) and column sums (5 values)
-            row_sums = np.sum(grid, axis=1)  # Sum each row (7 values)
-            col_sums = np.sum(grid, axis=0)  # Sum each column (5 values)
-
-            # Combine into 12-element feature vector
+            row_sums = np.sum(grid, axis=1)
+            col_sums = np.sum(grid, axis=0)
             feature_vector = np.concatenate([row_sums, col_sums])
-
             features.append(feature_vector)
-            labels.append(label)
+            labels.append(self.label_to_idx[label])
 
-        return np.array(features), np.array(labels).astype(np.float32).reshape(-1, 1)
+        return np.array(features), np.array(labels).astype(np.int32).reshape(-1, 1)
 
     def preprocess(self):
         # Only CSV supported
         return self._preprocess_csv()
 
     # activation functions
-    def sigmoid(self, x):
-        return 1 / (1 + np.exp(-np.clip(x, -500, 500)))  # Clip to prevent overflow
-
-    def sigmoid_deriv(self, x):
-        s = self.sigmoid(x)
-        return s * (1 - s)
+    def softmax(self, x):
+        exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+        return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
     def relu(self, x):
         return np.maximum(0, x)
@@ -70,10 +59,15 @@ class PerceptronOCR:
         return np.mean((pred - true) ** 2)
 
     def accuracy(self, pred, true):
-        # For regression, check if rounded prediction matches true ASCII value
-        pred_ascii = np.round(pred).astype(int)
-        true_ascii = true.astype(int)
-        return np.mean(pred_ascii == true_ascii)
+        pred_class = np.argmax(pred, axis=1)
+        true_class = true.flatten()
+        return np.mean(pred_class == true_class)
+
+    def cross_entropy(self, pred, true):
+        m = true.shape[0]
+        p = pred[range(m), true.flatten()]
+        log_likelihood = -np.log(p + 1e-8)
+        return np.mean(log_likelihood)
 
     # training function
     def train(
@@ -86,12 +80,12 @@ class PerceptronOCR:
         if input_size is None:
             input_size = self.X.shape[1]  # Auto-detect input size
 
-        output_size = 1  # Single output for regression
+        output_size = len(self.label_to_idx)  # Number of classes
 
-        # Basic random initialization (e.g., from a standard normal distribution)
-        self.W1 = np.random.randn(input_size, hidden_size) * 0.01 # Small random values
+        # He initialization for ReLU layers
+        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2.0 / input_size)
         self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size) * 0.01 # Small random values
+        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2.0 / hidden_size)
         self.b2 = np.zeros((1, output_size))
 
         # Feature normalization for CSV data
@@ -99,21 +93,17 @@ class PerceptronOCR:
         self.feature_std = np.std(self.X, axis=0) + 1e-8
         X_normalized = (self.X - self.feature_mean) / self.feature_std
 
-        # Normalize targets to help with training stability
-        self.target_mean = np.mean(self.Y)
-        self.target_std = np.std(self.Y) + 1e-8
-        Y_normalized = (self.Y - self.target_mean) / self.target_std
-
         for epoch in range(epochs):
-            # Forward pass
             z1 = X_normalized @ self.W1 + self.b1
-            a1 = self.relu(z1)  # Using ReLU for consistency
+            a1 = self.relu(z1)
             z2 = a1 @ self.W2 + self.b2
-            a2 = z2  # Linear output for regression
-            loss = self.mse(a2, Y_normalized)
+            a2 = self.softmax(z2)  # Softmax output
+            loss = self.cross_entropy(a2, self.Y)
 
             # Backward pass
-            dz2 = (a2 - Y_normalized) / len(X_normalized)  # MSE derivative
+            dz2 = a2.copy()  # Use a copy to avoid modifying a2 in-place
+            dz2[range(len(self.Y)), self.Y.flatten()] -= 1
+            dz2 /= len(self.Y)
             dW2 = a1.T @ dz2
             db2 = np.sum(dz2, axis=0, keepdims=True)
 
@@ -137,9 +127,8 @@ class PerceptronOCR:
             self.W2 -= learning_rate * dW2
             self.b2 -= learning_rate * db2
 
-            # Denormalize predictions for accuracy calculation
-            a2_denorm = a2 * self.target_std + self.target_mean
-            accuracy = self.accuracy(a2_denorm, self.Y)
+            # Accuracy calculation (no denormalization)
+            accuracy = self.accuracy(a2, self.Y)
 
             # Store training history
             self.train_history.append(
@@ -152,37 +141,22 @@ class PerceptronOCR:
         print(f"Final - Epoch {epochs - 1}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
 
     def predict(self, X):
-        # Normalize input
-        if hasattr(self, "feature_mean"):
-            X_normalized = (X - self.feature_mean) / self.feature_std
-        else:
-            X_normalized = X
-
+        X_normalized = (X - self.feature_mean) / self.feature_std
         z1 = X_normalized @ self.W1 + self.b1
         a1 = self.relu(z1)
         z2 = a1 @ self.W2 + self.b2
-
-        # Denormalize the output for regression
-        output_normalized = z2
-        if hasattr(self, "target_mean"):
-            output = output_normalized * self.target_std + self.target_mean
-        else:
-            output = output_normalized
-        return output
+        probs = self.softmax(z2)
+        pred_class = np.argmax(probs, axis=1)
+        return pred_class
 
     def sample_predict(self):
-        # For CSV regression
         preds = self.predict(self.X)
         y_true = self.Y.flatten()
-
         print("Sample predictions for digit recognition:")
-        for i, (pred, true) in enumerate(zip(preds.flatten(), y_true)):
-            pred_rounded = int(np.round(pred))
-            pred_char = chr(pred_rounded) if 32 <= pred_rounded <= 126 else "?"
-            true_char = chr(int(true))
-            print(
-                f"Sample {i + 1}: predicted ASCII {pred_rounded} ('{pred_char}'), actual ASCII {int(true)} ('{true_char}')"
-            )
+        for i, (pred, true) in enumerate(zip(preds, y_true)):
+            pred_label = self.idx_to_label[pred]
+            true_label = self.idx_to_label[true]
+            print(f"Sample {i + 1}: predicted '{pred_label}', actual '{true_label}'")
 
     def history(self):
         if not self.train_history:
