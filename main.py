@@ -26,7 +26,7 @@ if "drawing_grid" not in st.session_state:
 
 def create_drawing_interface():
     """Create a 5x7 pixel drawing interface using dataframe with checkboxes"""
-    st.subheader("Draw a Character (5x7 pixels)")
+    st.subheader("Draw a Character (5x7 pixels)", anchor=False)
 
     # Create a dataframe for the drawing grid
     # Convert numpy array to dataframe with boolean values for checkboxes
@@ -207,8 +207,11 @@ def display_training_metrics(training_results):
 
 
 def main():
-    st.title("🧠 OCR Neural Network Trainer")
-    st.markdown("---")
+    st.title(
+        "🧠 OCR Neural Network Trainer",
+        anchor=False,
+    )
+    st.divider()
 
     # Sidebar for model parameters
     st.sidebar.title("Training Parameters")
@@ -355,7 +358,7 @@ def main():
 
     with col1:
         # Training section
-        st.subheader("Model Training")
+        st.subheader("Model Training", anchor=False)
 
         if st.button(
             "🚀 Train Model", type="primary", disabled=(not st.session_state.models)
@@ -420,7 +423,7 @@ def main():
 
     with col2:
         # Inference section
-        st.subheader("Character Inference")
+        st.subheader("Character Inference", anchor=False)
 
         if not st.session_state.is_trained:
             st.info("🔒 Please train the models first to enable inference.")
@@ -489,7 +492,7 @@ def main():
 
             with tab2:
                 # Custom pixel input
-                st.subheader("Input Custom Pixel Data")
+                st.subheader("Input Custom Pixel Data", anchor=False)
                 custom_pixel_input = st.text_input(
                     "Enter 35 pixel values (0 or 1) separated by commas (e.g., 0,1,1,1,0,1,0,...):",
                     key="custom_pixel_input",
