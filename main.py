@@ -113,12 +113,12 @@ def train_model(model_name, model_instance, **kwargs):
     return success, output_buffer.getvalue(), training_history
 
 
-def display_training_comparison(training_results):
-    """Display training results in a comparative table and plots."""
+def display_training_metrics(training_results):
+    """Display training results in a table and plots."""
     if not training_results:
         return
 
-    st.subheader("Training Results Comparison")
+    st.subheader("Training Results Metrics")
 
     # Prepare data for the table
     table_data = []
@@ -133,23 +133,17 @@ def display_training_comparison(training_results):
             if result["training_history"]["accuracy"]
             else np.nan
         )
-        best_accuracy = (
-            max(result["training_history"]["accuracy"])
-            if result["training_history"]["accuracy"]
-            else np.nan
-        )
         table_data.append(
             {
                 "Model": model_name,
                 "Final Loss": f"{final_loss:.4f}",
                 "Final Accuracy": f"{final_accuracy:.4f}",
-                "Best Accuracy": f"{best_accuracy:.4f}",
             }
         )
-    st.dataframe(pd.DataFrame(table_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
     # Plotting Loss and Accuracy over Epochs for all models
-    st.subheader("Training Metrics Over Time (Comparison)")
+    st.subheader("Training Metrics Over Time")
 
     fig_loss = go.Figure()
     fig_accuracy = go.Figure()
@@ -175,13 +169,13 @@ def display_training_comparison(training_results):
             )
 
     fig_loss.update_layout(
-        title="Training Loss Comparison",
+        title="Training Loss",
         xaxis_title="Epoch",
         yaxis_title="Loss",
         hovermode="x unified",
     )
     fig_accuracy.update_layout(
-        title="Training Accuracy Comparison",
+        title="Training Accuracy",
         xaxis_title="Epoch",
         yaxis_title="Accuracy",
         hovermode="x unified",
@@ -196,7 +190,7 @@ def display_training_comparison(training_results):
         if result["training_history"]["epochs"]:
             with st.expander(f"View {model_name} Training History"):
                 history_df = pd.DataFrame(result["training_history"])
-                st.dataframe(history_df.round(4), use_container_width=True, height=200)
+                st.dataframe(history_df.round(4), use_container_width=True, height=200, hide_index=True)
                 csv = history_df.to_csv(index=False)
                 st.download_button(
                     label=f"📥 Download {model_name} History as CSV",
@@ -416,9 +410,9 @@ def main():
                 st.warning("Training completed with some failures.")
             st.rerun()  # Rerun to update the display
 
-        # Display training comparison table and plots if results exist
+        # Display training metrics table and plots if results exist
         if st.session_state.is_trained and st.session_state.training_results:
-            display_training_comparison(st.session_state.training_results)
+            display_training_metrics(st.session_state.training_results)
             st.markdown("---")
             st.subheader("Sample Predictions from Trained Models")
             for model_name, model_instance in st.session_state.models.items():
