@@ -223,6 +223,60 @@ def display_prediction(grid, source_label="Input"):
             🎯 Predicted character: **{predicted_char} ({chr(predicted_char)})**
             📊 Class Index: **{pred_class}**
         """)
+
+        # Show all output neuron values for this input
+        if hasattr(model_instance, "forward"):
+            # Try to get the raw output neuron values
+            try:
+                output_neurons = (
+                    model_instance.forward(features, return_logits=True)
+                    if "return_logits" in model_instance.forward.__code__.co_varnames
+                    else model_instance.forward(features)
+                )
+                output_neurons = np.array(output_neurons).flatten()
+            except Exception:
+                # fallback: try model_instance.last_output or similar
+                output_neurons = None
+            if output_neurons is not None:
+                # Build DataFrame for all output neurons
+                class_indices = list(range(len(output_neurons)))
+                labels = [
+                    model_instance.idx_to_label.get(idx, "?") for idx in class_indices
+                ]
+                ascii_labels = [
+                    chr(label)
+                    if isinstance(label, int) and 32 <= label <= 126
+                    else str(label)
+                    for label in labels
+                ]
+                df = pd.DataFrame(
+                    {
+                        "Class Index": class_indices,
+                        "Label (ASCII)": ascii_labels,
+                        "Output Neuron Value": output_neurons,
+                    }
+                )
+
+                # Highlight the row with the predicted class
+                def highlight_pred(row):
+                    color = (
+                        "background-color: lightgreen"
+                        if row["Class Index"] == pred_class
+                        else ""
+                    )
+                    return [
+                        "" if c != "Output Neuron Value" else color for c in row.index
+                    ]
+
+                st.write("All output neuron values (highest = prediction):")
+                st.dataframe(
+                    df.style.apply(highlight_pred, axis=1), use_container_width=True
+                )
+            else:
+                st.warning("Could not retrieve output neuron values for this model.")
+        else:
+            st.warning("Model does not support output neuron inspection.")
+
     st.markdown("---")
     st.subheader(f"Feature Analysis (Input to Models - {source_label})")
     st.write(f"Row sums (7 values): {row_sums}")

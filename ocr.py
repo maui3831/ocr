@@ -148,6 +148,17 @@ class PerceptronOCR:
         logging.info(f"Final W2: {self.W2}")
         logging.info(f"Final b2: {self.b2}")
 
+    def forward(self, X, return_logits=False):
+        """Forward pass for inference. If return_logits=True, returns pre-softmax output (logits)."""
+        X_normalized = (X - self.feature_mean) / self.feature_std
+        z1 = X_normalized @ self.W1 + self.b1
+        a1 = self.relu(z1)
+        z2 = a1 @ self.W2 + self.b2
+        if return_logits:
+            return z2
+        else:
+            return self.softmax(z2)
+
     def predict(self, X):
         X_normalized = (X - self.feature_mean) / self.feature_std
         z1 = X_normalized @ self.W1 + self.b1
