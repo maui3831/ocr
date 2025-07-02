@@ -8,11 +8,7 @@ by AI Group 2
 
 ## Project Description
 
-This project implements a web-based Optical Character Recognition (OCR) neural network trainer using Streamlit. It allows users to train and compare three different single-hidden-layer perceptron models, each employing a distinct weight initialization strategy:
-
-**PerceptronOCR (Normal Initialization):** Uses basic random initialization for weights.
-
-**GlorotOCR (Glorot/Xavier Initialization):** Implements Glorot initialization, typically suited for sigmoid/tanh activations.
+This project implements a web-based Optical Character Recognition (OCR) neural network trainer using Streamlit. It allows users to train and do inference on the multilayer perceptron model, employing a distinct weight initialization strategy through He initialization. 
 
 **KaimingOCR (Kaiming He Initialization):** Implements Kaiming He 
 initialization, specifically designed for ReLU activations.
@@ -25,9 +21,8 @@ The application processes 7x5 pixel character data by extracting 12-element feat
 
 * Custom Pixel Input: Provide character pixel data as a comma-separated string (35 pixels + 1 ASCII label).
 
-* Multiple Model Training: Train and compare three different neural network models simultaneously.
 
-* Comparative Training Plots: Visualize and contrast the training loss and accuracy of all models over epochs using Plotly graphs.
+* Comparative Training Plots: Visualize and contrast the training loss and accuracy of all over epochs using Plotly graphs.
 
 * Detailed Training History: View and download the full training history (loss, accuracy per epoch) for each model.
 
