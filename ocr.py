@@ -1,5 +1,12 @@
 import pandas as pd
 import numpy as np
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 class PerceptronOCR:
@@ -8,8 +15,8 @@ class PerceptronOCR:
         self.df = pd.read_csv(input_file)
 
         self.X, self.Y = self._preprocess_csv()
-        print(f"Features shape: {self.X.shape}")
-        print(f"Labels shape: {self.Y.shape}")
+        logging.info(f"Features shape: {self.X.shape}")
+        logging.info(f"Labels shape: {self.Y.shape}")
 
         # weights and biases
         self.W1 = None
@@ -74,7 +81,7 @@ class PerceptronOCR:
         self,
         input_size=None,
         learning_rate=0.01,
-        hidden_size=26,
+        hidden_size=16,
         epochs=1000,
     ):
         if input_size is None:
@@ -139,6 +146,11 @@ class PerceptronOCR:
                 print(f"Epoch {epoch}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
 
         print(f"Final - Epoch {epochs - 1}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
+        # Log final weights and biases
+        logging.info(f"Final W1: {self.W1}")
+        logging.info(f"Final b1: {self.b1}")
+        logging.info(f"Final W2: {self.W2}")
+        logging.info(f"Final b2: {self.b2}")
 
     def predict(self, X):
         X_normalized = (X - self.feature_mean) / self.feature_std
