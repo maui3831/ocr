@@ -190,7 +190,12 @@ def display_training_metrics(training_results):
         if result["training_history"]["epochs"]:
             with st.expander(f"View {model_name} Training History"):
                 history_df = pd.DataFrame(result["training_history"])
-                st.dataframe(history_df.round(4), use_container_width=True, height=200, hide_index=True)
+                st.dataframe(
+                    history_df.round(4),
+                    use_container_width=True,
+                    height=200,
+                    hide_index=True,
+                )
                 csv = history_df.to_csv(index=False)
                 st.download_button(
                     label=f"📥 Download {model_name} History as CSV",
@@ -328,17 +333,8 @@ def main():
     st.sidebar.subheader("Neural Network Parameters")
 
     # Auto-detect input size based on format
-    default_input_size = 12
     default_hidden_size = 16
-    if "PerceptronOCR" in st.session_state.models:
-        default_input_size = st.session_state.models["PerceptronOCR"].X.shape[1]
-        st.sidebar.info(
-            f"CSV Mode: Using {default_input_size} features (row + column sums)"
-        )
 
-    input_size = st.sidebar.number_input(
-        "Input Size", value=default_input_size, min_value=1, max_value=1000
-    )
     hidden_size = st.sidebar.number_input(
         "Hidden Size", value=default_hidden_size, min_value=1, max_value=1000
     )
@@ -386,7 +382,7 @@ def main():
                     success, output, history = train_model(
                         model_name,
                         model_instance,
-                        input_size=input_size,
+                        input_size=12,
                         hidden_size=hidden_size,
                         learning_rate=learning_rate,
                         epochs=epochs,
