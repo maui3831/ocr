@@ -33,7 +33,7 @@ def create_drawing_interface():
     grid_df = pd.DataFrame(
         st.session_state.drawing_grid.astype(bool),
         columns=[f"Col_{i}" for i in range(5)],
-        index=[f"Row_{i}" for i in range(7)]
+        index=[f"Row_{i}" for i in range(7)],
     )
 
     # Use data_editor with checkboxes (without automatic updates)
@@ -46,17 +46,22 @@ def create_drawing_interface():
                 f"Col {i}",
                 help=f"Column {i}",
                 default=False,
-            ) for i in range(5)
+            )
+            for i in range(5)
         },
         key="drawing_grid_editor",
-        disabled=False
+        disabled=False,
     )
 
     # Control buttons
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
-        if st.button("📝 Update Grid", type="primary", help="Apply your checkbox changes to the drawing grid"):
+        if st.button(
+            "📝 Update Grid",
+            type="primary",
+            help="Apply your checkbox changes to the drawing grid",
+        ):
             st.session_state.drawing_grid = edited_df.values.astype(int)
             st.success("✅ Grid updated!")
             st.rerun()
@@ -88,8 +93,8 @@ def train_model(model_name, model_instance, **kwargs):
 
     try:
         # Before training, ensure the model's history is clear for a fresh run
-        if hasattr(model_instance, 'train_history'):
-            model_instance.train_history = [] 
+        if hasattr(model_instance, "train_history"):
+            model_instance.train_history = []
 
         with redirect_stdout(output_buffer):
             model_instance.train(**kwargs)
@@ -118,15 +123,27 @@ def display_training_comparison(training_results):
     # Prepare data for the table
     table_data = []
     for model_name, result in training_results.items():
-        final_loss = result["training_history"]["loss"][-1] if result["training_history"]["loss"] else np.nan
-        final_accuracy = result["training_history"]["accuracy"][-1] if result["training_history"]["accuracy"] else np.nan
-        best_accuracy = max(result["training_history"]["accuracy"]) if result["training_history"]["accuracy"] else np.nan
+        final_loss = (
+            result["training_history"]["loss"][-1]
+            if result["training_history"]["loss"]
+            else np.nan
+        )
+        final_accuracy = (
+            result["training_history"]["accuracy"][-1]
+            if result["training_history"]["accuracy"]
+            else np.nan
+        )
+        best_accuracy = (
+            max(result["training_history"]["accuracy"])
+            if result["training_history"]["accuracy"]
+            else np.nan
+        )
         table_data.append(
             {
                 "Model": model_name,
                 "Final Loss": f"{final_loss:.4f}",
                 "Final Accuracy": f"{final_accuracy:.4f}",
-                "Best Accuracy": f"{best_accuracy:.4f}"
+                "Best Accuracy": f"{best_accuracy:.4f}",
             }
         )
     st.dataframe(pd.DataFrame(table_data), use_container_width=True)
@@ -186,7 +203,7 @@ def display_training_comparison(training_results):
                     data=csv,
                     file_name=f"{model_name}_training_history.csv",
                     mime="text/csv",
-                    key=f"download_{model_name}"
+                    key=f"download_{model_name}",
                 )
 
 
@@ -199,13 +216,13 @@ def main():
 
     # Data source selection
     st.sidebar.subheader("Data Source")
-    
+
     # Dynamically discover CSV files in the data folder
     data_folder = Path("./data")
     csv_files = []
     csv_options = ["Upload CSV File"]  # Always include upload option
     csv_file_mapping = {}  # Map display names to file paths
-    
+
     if data_folder.exists():
         # Find all CSV files in the data folder
         csv_files = list(data_folder.glob("*.csv"))
@@ -214,13 +231,13 @@ def main():
             display_name = f"Use {csv_file.stem.replace('_', ' ').title()} Dataset"
             csv_options.append(display_name)
             csv_file_mapping[display_name] = csv_file
-    
+
     # Show available datasets info
     if csv_files:
         st.sidebar.info(f"Found {len(csv_files)} CSV dataset(s) in data folder")
     else:
         st.sidebar.warning("No CSV files found in data folder")
-    
+
     data_source = st.sidebar.radio(
         "Choose data source:",
         options=csv_options,
@@ -250,7 +267,7 @@ def main():
     elif data_source in csv_file_mapping:
         # Use one of the discovered CSV datasets
         csv_path = csv_file_mapping[data_source]
-        
+
         if csv_path.exists():
             file_path = str(csv_path)
             st.sidebar.success(f"✅ {data_source} found!")
@@ -284,7 +301,9 @@ def main():
 
     # Initialize all models if file path is available and models are not initialized
     # OR if file_path has changed, re-initialize them
-    if file_path is not None and (not st.session_state.models or st.session_state.prev_file_path != str(file_path)):
+    if file_path is not None and (
+        not st.session_state.models or st.session_state.prev_file_path != str(file_path)
+    ):
         try:
             st.session_state.models["PerceptronOCR"] = PerceptronOCR(file_path)
             st.sidebar.success("✅ All models initialized successfully!")
@@ -337,7 +356,9 @@ def main():
         step=0.001,
         format="%.3f",
     )
-    epochs = st.sidebar.number_input("Epochs", value=10000, min_value=1, max_value=500000)
+    epochs = st.sidebar.number_input(
+        "Epochs", value=10000, min_value=1, max_value=500000
+    )
 
     # Main interface
     col1, col2 = st.columns([1, 1])
@@ -360,12 +381,12 @@ def main():
                 except Exception as e:
                     st.error(f"❌ Error re-initializing model: {str(e)}")
                     st.session_state.is_trained = False
-                    return # Stop if re-initialization fails
+                    return  # Stop if re-initialization fails
 
             for model_name, model_instance in st.session_state.models.items():
                 st.info(f"Training {model_name}...")
                 progress_bar = st.progress(0, text=f"Training {model_name}...")
-                
+
                 # Use a specific key for each model's spinner to avoid conflicts
                 with st.spinner(f"Training {model_name} model..."):
                     success, output, history = train_model(
@@ -382,20 +403,18 @@ def main():
                     }
                     if not success:
                         all_trained_successfully = False
-                
+
                 progress_bar.progress(1.0, text=f"{model_name} training complete!")
                 st.success(f"✅ {model_name} trained successfully!")
                 with st.expander(f"View {model_name} Training Output"):
                     st.text(output)
-
 
             st.session_state.is_trained = all_trained_successfully
             if all_trained_successfully:
                 st.success("✅ All models trained successfully!")
             else:
                 st.warning("Training completed with some failures.")
-            st.rerun() # Rerun to update the display
-
+            st.rerun()  # Rerun to update the display
 
         # Display training comparison table and plots if results exist
         if st.session_state.is_trained and st.session_state.training_results:
@@ -409,7 +428,6 @@ def main():
                         model_instance.sample_predict()
                     st.text(sample_output_buffer.getvalue())
 
-
     with col2:
         # Inference section
         st.subheader("Character Inference")
@@ -419,16 +437,16 @@ def main():
         else:
             # Create tabs for different input methods
             tab1, tab2 = st.tabs(["🎨 Drawing Grid", "⌨️ Custom Input"])
-            
+
             with tab1:
                 # Drawing interface
                 create_drawing_interface()
-                
+
                 # Inference button for drawing grid
                 if st.button(
-                    "🔍 Predict Character from Grid", 
+                    "🔍 Predict Character from Grid",
                     disabled=not st.session_state.is_trained,
-                    key="predict_grid"
+                    key="predict_grid",
                 ):
                     if st.session_state.is_trained and st.session_state.models:
                         st.subheader("Prediction Results - Drawing Grid")
@@ -436,21 +454,30 @@ def main():
                         # Prediction for drawn grid
                         try:
                             grid = st.session_state.drawing_grid
-                            
+
                             # Display the drawn grid
                             st.text("Drawn Grid (7x5):")
                             for row in grid.astype(int):
-                                st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
-                            
+                                st.write(
+                                    "".join(["🟩" if p == 1 else "⬜" for p in row])
+                                )
+
                             row_sums = np.sum(grid, axis=1)
                             col_sums = np.sum(grid, axis=0)
-                            input_features_drawn = np.concatenate([row_sums, col_sums]).reshape(
-                                1, -1
-                            )
-                            for model_name, model_instance in st.session_state.models.items():
-                                prediction = model_instance.predict(input_features_drawn)
+                            input_features_drawn = np.concatenate(
+                                [row_sums, col_sums]
+                            ).reshape(1, -1)
+                            for (
+                                model_name,
+                                model_instance,
+                            ) in st.session_state.models.items():
+                                prediction = model_instance.predict(
+                                    input_features_drawn
+                                )
                                 pred_class = int(prediction[0])
-                                predicted_char = model_instance.idx_to_label.get(pred_class, "?")
+                                predicted_char = model_instance.idx_to_label.get(
+                                    pred_class, "?"
+                                )
 
                                 st.write(f"**{model_name} Prediction:**")
                                 st.info(f"""
@@ -459,7 +486,9 @@ def main():
                                        """)
                             st.markdown("---")
 
-                            st.subheader("Feature Analysis (Input to Models - Drawn Grid)")
+                            st.subheader(
+                                "Feature Analysis (Input to Models - Drawn Grid)"
+                            )
                             st.write(f"Row sums (7 values): {row_sums}")
                             st.write(f"Column sums (5 values): {col_sums}")
                             st.write(
@@ -467,46 +496,61 @@ def main():
                             )
                         except Exception as e:
                             st.error(f"❌ Prediction for drawn grid failed: {str(e)}")
-            
+
             with tab2:
                 # Custom pixel input
                 st.subheader("Input Custom Pixel Data")
                 custom_pixel_input = st.text_input(
                     "Enter 35 pixel values (0 or 1) separated by commas (e.g., 0,1,1,1,0,1,0,...):",
                     key="custom_pixel_input",
-                    help="Enter exactly 35 values for a 7x5 pixel grid"
+                    help="Enter exactly 35 values for a 7x5 pixel grid",
                 )
-                
+
                 # Inference button for custom input
                 if st.button(
-                    "🔍 Predict Character from Custom Input", 
+                    "🔍 Predict Character from Custom Input",
                     disabled=not st.session_state.is_trained,
-                    key="predict_custom"
+                    key="predict_custom",
                 ):
-                    if st.session_state.is_trained and st.session_state.models and custom_pixel_input:
+                    if (
+                        st.session_state.is_trained
+                        and st.session_state.models
+                        and custom_pixel_input
+                    ):
                         st.subheader("Prediction Results - Custom Input")
 
                         # Prediction for custom input
                         try:
-                            values = [int(x.strip()) for x in custom_pixel_input.split(',')]
-                            if len(values) == 35: # 35 pixels only
+                            values = [
+                                int(x.strip()) for x in custom_pixel_input.split(",")
+                            ]
+                            if len(values) == 35:  # 35 pixels only
                                 pixel_values = np.array(values).reshape(7, 5)
 
                                 # Display the custom input grid
                                 st.text("Custom Input Grid (7x5):")
                                 for row in pixel_values.astype(int):
-                                    st.write("".join(["🟩" if p == 1 else "⬜" for p in row]))
+                                    st.write(
+                                        "".join(["🟩" if p == 1 else "⬜" for p in row])
+                                    )
 
                                 row_sums_custom = np.sum(pixel_values, axis=1)
                                 col_sums_custom = np.sum(pixel_values, axis=0)
-                                input_features_custom = np.concatenate([row_sums_custom, col_sums_custom]).reshape(
-                                    1, -1
-                                )
+                                input_features_custom = np.concatenate(
+                                    [row_sums_custom, col_sums_custom]
+                                ).reshape(1, -1)
 
-                                for model_name, model_instance in st.session_state.models.items():
-                                    prediction = model_instance.predict(input_features_custom)
+                                for (
+                                    model_name,
+                                    model_instance,
+                                ) in st.session_state.models.items():
+                                    prediction = model_instance.predict(
+                                        input_features_custom
+                                    )
                                     pred_class = int(prediction[0])
-                                    predicted_char = model_instance.idx_to_label.get(pred_class, "?")
+                                    predicted_char = model_instance.idx_to_label.get(
+                                        pred_class, "?"
+                                    )
                                     raw_output = float(prediction[0])
 
                                     st.write(f"**{model_name} Prediction:**")
@@ -516,7 +560,9 @@ def main():
                                            """)
                                 st.markdown("---")
 
-                                st.subheader("Feature Analysis (Input to Models - Custom Input)")
+                                st.subheader(
+                                    "Feature Analysis (Input to Models - Custom Input)"
+                                )
                                 st.write(f"Row sums (7 values): {row_sums_custom}")
                                 st.write(f"Column sums (5 values): {col_sums_custom}")
                                 st.write(
@@ -524,9 +570,13 @@ def main():
                                 )
 
                             else:
-                                st.warning("Please enter exactly 35 pixel values separated by commas.")
+                                st.warning(
+                                    "Please enter exactly 35 pixel values separated by commas."
+                                )
                         except ValueError:
-                            st.error("Invalid input format. Please ensure all values are numbers separated by commas.")
+                            st.error(
+                                "Invalid input format. Please ensure all values are numbers separated by commas."
+                            )
                         except Exception as e:
                             st.error(f"❌ Prediction for custom input failed: {str(e)}")
                     elif not custom_pixel_input:

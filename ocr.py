@@ -27,7 +27,7 @@ class PerceptronOCR:
         unique_labels = sorted(self.df["label"].unique())
         self.label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
         self.idx_to_label = {idx: label for label, idx in self.label_to_idx.items()}
-    
+
         for _, row in self.df.iterrows():
             pixel_values = row.iloc[:-1].values.astype(np.float32)
             label = row["label"]
@@ -37,7 +37,7 @@ class PerceptronOCR:
             feature_vector = np.concatenate([row_sums, col_sums])
             features.append(feature_vector)
             labels.append(self.label_to_idx[label])
-    
+
         return np.array(features), np.array(labels).astype(np.int32).reshape(-1, 1)
 
     def preprocess(self):
@@ -62,7 +62,7 @@ class PerceptronOCR:
         pred_class = np.argmax(pred, axis=1)
         true_class = true.flatten()
         return np.mean(pred_class == true_class)
-    
+
     def cross_entropy(self, pred, true):
         m = true.shape[0]
         p = pred[range(m), true.flatten()]
@@ -83,9 +83,9 @@ class PerceptronOCR:
         output_size = len(self.label_to_idx)  # Number of classes
 
         # He initialization for ReLU layers
-        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2. / input_size)
+        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2.0 / input_size)
         self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2. / hidden_size)
+        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2.0 / hidden_size)
         self.b2 = np.zeros((1, output_size))
 
         # Feature normalization for CSV data
